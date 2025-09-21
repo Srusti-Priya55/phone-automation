@@ -1,0 +1,7 @@
+09-21 20:09:53.908 17492 17515 I csc_nvmagent: Function: notifyInterfaceChange File: NetworkMonitor.cpp Line: 387 Received interface change notification
+09-21 20:09:53.908 17492 17515 I csc_nvmagent: Function: OnInterfaceChange File: NVMTND.cpp Line: 579 Network Interface change notified - Interface down.
+09-21 20:09:53.908 17492 17515 I csc_nvmagent: Function: OnNetworkTypeChange File: NetworkInterfaceManager.cpp Line: 368 CNetworkInterfaceManager::OnNetworkTypeChange - Interface change signal received
+09-21 20:09:53.908 17492 17515 I csc_nvmagent: Function: OnNetworkTypeChange File: NetworkInterfaceManager.cpp Line: 368 CNetworkInterfaceManager::OnNetworkTypeChange - Interface change signal received
+09-21 20:09:54.548 17492 17515 I csc_nvmagent: Function: notifyInterfaceChange File: NetworkMonitor.cpp Line: 387 Received interface change notification
+09-21 20:09:54.548 17492 17515 I csc_nvmagent: Function: OnInterfaceChange File: NVMTND.cpp Line: 579 Network Interface change notified - Interface down.
+09-21 20:09:54.548 17492 17515 I csc_nvmagent: Function: OnNetworkTypeChange File: NetworkInterfaceManager.cpp Line: 368 CNetworkInterfaceManager::OnNetworkTypeChange - Interface change signal received
