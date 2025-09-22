@@ -14,14 +14,64 @@ export const config: WebdriverIO.Config = {
   port: 4723,
   path: '/',
 
-  // Keep the broad glob for regular runs…
   specs: ['./test/specs/**/*.ts'],
   exclude: [],
 
-  // …but define suites to run just the chain files
+  /**
+   * SUITES for Jenkins checkboxes
+   * (names are simple and match your manager’s wording)
+   */
   suites: {
-    e2e_adb: ['./test/specs/e2e-adb.e2e.ts'],
-    e2e_play: ['./test/specs/e2e-playstore.e2e.ts'],
+    // 1) Installation via ADB
+    install_adb: [
+      'test/specs/install-adb.e2e.ts',
+      'test/specs/push-and-register.e2e.ts',
+      'test/specs/add-asa-and-connect.e2e.ts',
+      'test/specs/nvm-service-check.e2e.ts',
+      'test/specs/interface-change-check.e2e.ts',
+      'test/specs/unregister-profile.e2e.ts',
+      'test/specs/uninstall-adb.e2e.ts',
+    ],
+
+    // 2) Installation via Play Store
+    install_play: [
+      'test/specs/install-play.e2e.ts',
+      'test/specs/push-and-register.e2e.ts',
+      'test/specs/add-asa-and-connect.e2e.ts',
+      'test/specs/nvm-service-check.e2e.ts',
+      'test/specs/interface-change-check.e2e.ts',
+      'test/specs/unregister-profile.e2e.ts',
+      'test/specs/uninstall-play.e2e.ts',
+    ],
+
+    // 3) Aggregation check (same flow, swap aggregation step)
+    aggregation: [
+      'test/specs/install-adb.e2e.ts',
+      'test/specs/aggregation-check.e2e.ts',
+      'test/specs/add-asa-and-connect.e2e.ts',
+      'test/specs/nvm-service-check.e2e.ts',
+      'test/specs/interface-change-check.e2e.ts',
+      'test/specs/unregister-profile.e2e.ts',
+      'test/specs/uninstall-adb.e2e.ts',
+    ],
+
+    // 4) TND check (same flow, swap TND step)
+    tnd: [
+      'test/specs/install-adb.e2e.ts',
+      'test/specs/tnd-check.e2e.ts',
+      'test/specs/add-asa-and-connect.e2e.ts',
+      'test/specs/nvm-service-check.e2e.ts',
+      'test/specs/interface-change-check.e2e.ts',
+      'test/specs/unregister-profile.e2e.ts',
+      'test/specs/uninstall-adb.e2e.ts',
+    ],
+
+    // 5) Negatives pack
+    negatives: [
+      'test/specs/neg-Reregister-same-profile.e2e.ts',       // note: capital "R" matches your file
+      'test/specs/neg-invalid-profile-push-register.e2e.ts',
+      'test/specs/neg-uninstall-not-installed.e2e.ts',
+    ],
   },
 
   maxInstances: 1,
@@ -36,11 +86,10 @@ export const config: WebdriverIO.Config = {
   mochaOpts: {
     ui: 'bdd',
     timeout: 90000,
-    retries: MOCHA_RETRIES,      // default 0; set MOCHA_RETRIES=1 if you want retries
+    retries: MOCHA_RETRIES,
   },
 
-  // Retries for whole spec files
-  specFileRetries: SPEC_RETRIES, // default 0; set SPEC_RETRIES=1 to retry a failing file once
+  specFileRetries: SPEC_RETRIES,
   specFileRetriesDelay: 2,
 
   reporters: [
@@ -54,17 +103,12 @@ export const config: WebdriverIO.Config = {
     }]
   ],
 
-  //
-  // Hooks
-  //
   beforeTest: async (test) => {
     allure.addLabel('suite', test.parent)
   },
 
   afterTest: async (test, _context, { passed }) => {
-    if (!passed) {
-      await attachScreenshot(`Failed - ${test.title}`)
-    }
+    if (!passed) await attachScreenshot(`Failed - ${test.title}`)
     if (/\b(NVM|VPN|Wi[- ]?Fi)\b/i.test(test.title) || process.env.NVM_LOGS === '1') {
       await dumpNvmLogs(2000)
     }

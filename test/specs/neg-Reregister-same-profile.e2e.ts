@@ -1,98 +1,23 @@
-// test/specs/push-and-register.e2e.ts
+// test/specs/neg-reregister-then-unregister.e2e.ts
 import { $, $$, driver } from '@wdio/globals'
 import allure from '@wdio/allure-reporter'
-import { Status } from 'allure-js-commons'
 import path from 'node:path'
 import { exec as _exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import { step } from '../utils/report'
-
-import { clearRecents, forceStopKnoxIfConfigured, ensureKnoxAtRoot } from '../utils/app-reset'
+import { clearRecents, forceStopKnoxIfConfigured } from '../utils/app-reset'
 
 const exec = promisify(_exec)
-
-/* ---------------- utilities ---------------- */
 const sleep = (ms: number) => new Promise(res => setTimeout(res, ms))
 
+/* ---------- common helpers ---------- */
 async function runCmd(cmd: string) {
   const full = process.platform === 'win32' ? `cmd /c ${cmd}` : cmd
   return exec(full, { maxBuffer: 10 * 1024 * 1024 })
 }
-
 async function adbPush(localAbs: string, remoteAbs: string) {
   await runCmd(`adb push "${localAbs}" "${remoteAbs}"`)
 }
-
-async function takeAndAttachScreenshot(name: string) {
-  const b64 = await driver.takeScreenshot()
-  allure.addAttachment(name, Buffer.from(b64, 'base64'), 'image/png')
-}
-
-
-async function waitForAnyText(regexes: RegExp[], timeoutMs: number): Promise<boolean> {
-  const end = Date.now() + timeoutMs
-  while (Date.now() < end) {
-    for (const rgx of regexes) {
-      try {
-        const els = await $$(`android=new UiSelector().textMatches("${rgx.source}")`)
-        for (const el of els) {
-          if (await el.isDisplayed()) return true
-        }
-      } catch { /* ignore and retry */ }
-    }
-    await sleep(300)
-  }
-  return false
-}
-async function waitForRegisterResultZero(timeoutMs = 10000): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs
-
-  // Accept multiple spellings / spacings / separators
-  const patterns: RegExp[] = [
-    /Registration.*result\s*[:=]\s*-6/i, 
-    /Registration.*result\s*[:=]\s*-6/i,    
-    /\bresult\s*[:=]\s*-6\b/i                
-  ]
-
-  // Little helper
-  const textMatchesAny = (txt: string) => patterns.some(rx => rx.test(txt))
-
-  while (Date.now() < deadline) {
-    // 1) Native Toast (sometimes available)
-    try {
-      const toast = await $('//android.widget.Toast')
-      if (await toast.isDisplayed()) {
-        const t = (await toast.getText()).trim()
-        if (textMatchesAny(t)) return true
-      }
-    } catch { /* toast not present → ignore */ }
-
-    // 2) Visible text nodes that look like snackbars/labels
-    try {
-      // common snackbar content class ends in TextView as well; check both
-      const maybeTexts = await $$(
-        '//android.widget.TextView | //android.view.View[contains(@content-desc,"result")]'
-      )
-      for (const el of maybeTexts) {
-        if (await el.isDisplayed()) {
-          const t = (await el.getText()).trim()
-          if (t && textMatchesAny(t)) return true
-        }
-      }
-    } catch { /* ignore and continue */ }
-
-    // 3) Page-source sweep (catches transient custom views)
-    try {
-      const xml = await driver.getPageSource()
-      if (textMatchesAny(xml)) return true
-    } catch { /* ignore */ }
-
-    await driver.pause(120) // tight polling to catch short-lived banners
-  }
-  return false
-}
-
-
 async function tapIfVisibleText(regex: RegExp, timeout = 3000): Promise<boolean> {
   const end = Date.now() + timeout
   while (Date.now() < end) {
@@ -101,311 +26,164 @@ async function tapIfVisibleText(regex: RegExp, timeout = 3000): Promise<boolean>
       for (const el of els) {
         if (await el.isDisplayed()) {
           await el.click()
-          await sleep(200)
+          await sleep(150)
           return true
         }
       }
-    } catch { /* ignore */ }
-    await sleep(300)
+    } catch {}
+    await sleep(250)
   }
   return false
 }
-
-/** Open an app from Samsung app drawer by label (swipe up → swipe left pages → tap label). */
+async function waitForResult(expected: number, timeoutMs = 10000): Promise<boolean> {
+  const pats = [
+    new RegExp(`Registration.*result\\s*[:=]\\s*${expected}`, 'i'),
+    new RegExp(`Un.?registration.*result\\s*[:=]\\s*${expected}`, 'i'),
+    new RegExp(`\\bresult\\s*[:=]\\s*${expected}\\b`, 'i'),
+  ]
+  const matches = (t: string) => pats.some(rx => rx.test(t))
+  const end = Date.now() + timeoutMs
+  while (Date.now() < end) {
+    try {
+      const toast = await $('//android.widget.Toast')
+      if (await toast.isDisplayed()) {
+        const t = (await toast.getText()).trim()
+        if (matches(t)) return true
+      }
+    } catch {}
+    try {
+      const nodes = await $$('//android.widget.TextView | //android.view.View[contains(@content-desc,"result")]')
+      for (const n of nodes) {
+        if (await n.isDisplayed()) {
+          const t = (await n.getText()).trim()
+          if (t && matches(t)) return true
+        }
+      }
+    } catch {}
+    try {
+      const xml = await driver.getPageSource()
+      if (matches(xml)) return true
+    } catch {}
+    await driver.pause(150)
+  }
+  return false
+}
 async function openAppFromDrawer(appName: string, pageLimit = 8): Promise<boolean> {
   await driver.execute('mobile: pressKey', { keycode: 3 }) // HOME
+  await sleep(500)
+  const { width, height } = await driver.getWindowSize()
+  const upStart = { x: Math.floor(width/2), y: Math.floor(height*0.88) }
+  const upEnd   = { x: Math.floor(width/2), y: Math.floor(height*0.20) }
+  await driver.performActions([{
+    type: 'pointer', id: 'open', parameters: { pointerType: 'touch' },
+    actions: [
+      { type:'pointerMove', duration:0, x:upStart.x, y:upStart.y },
+      { type:'pointerDown', button:0 },
+      { type:'pause', duration:120 },
+      { type:'pointerMove', duration:280, x:upEnd.x, y:upEnd.y },
+      { type:'pointerUp', button:0 }
+    ]}])
   await sleep(600)
 
-  // swipe up to open drawer
-  const { width, height } = await driver.getWindowSize()
-  const upStart = { x: Math.floor(width / 2), y: Math.floor(height * 0.88) }
-  const upEnd   = { x: Math.floor(width / 2), y: Math.floor(height * 0.20) }
-  await driver.performActions([{
-    type: 'pointer', id: 'finger-open', parameters: { pointerType: 'touch' },
-    actions: [
-      { type: 'pointerMove', duration: 0, x: upStart.x, y: upStart.y },
-      { type: 'pointerDown', button: 0 },
-      { type: 'pause', duration: 150 },
-      { type: 'pointerMove', duration: 300, x: upEnd.x, y: upEnd.y },
-      { type: 'pointerUp', button: 0 }
-    ]
-  }])
-  await sleep(700)
+  const midY = Math.floor(height*0.45)
+  const leftStartX = Math.floor(width*0.85)
+  const leftEndX   = Math.floor(width*0.15)
 
-  const midY = Math.floor(height * 0.45)
-  const leftStartX = Math.floor(width * 0.85)
-  const leftEndX   = Math.floor(width * 0.15)
-
-  for (let i = 0; i < pageLimit; i++) {
+  for (let i=0; i<pageLimit; i++) {
     const label = await $(`android=new UiSelector().text("${appName}")`)
     if (await label.isExisting() && await label.isDisplayed()) {
       await label.click()
-      const appeared = await waitForAnyText(
-        [/Knox Policies List/i, /Knox Tests/i, /Network Analytics/i],
-        5000
-      )
-      if (appeared) return true
+      return true
     }
-
-    // swipe left for next page
     await driver.performActions([{
-      type: 'pointer', id: 'finger-left', parameters: { pointerType: 'touch' },
-      actions: [
-        { type: 'pointerMove', duration: 0, x: leftStartX, y: midY },
-        { type: 'pointerDown', button: 0 },
-        { type: 'pause', duration: 120 },
-        { type: 'pointerMove', duration: 280, x: leftEndX, y: midY },
-        { type: 'pointerUp', button: 0 }
-      ]
-    }])
-    await sleep(700)
+      type:'pointer', id:'page', parameters:{pointerType:'touch'},
+      actions:[
+        {type:'pointerMove', duration:0, x:leftStartX, y:midY},
+        {type:'pointerDown', button:0},
+        {type:'pause', duration:100},
+        {type:'pointerMove', duration:240, x:leftEndX, y:midY},
+        {type:'pointerUp', button:0}
+      ]}])
+    await sleep(600)
   }
   return false
 }
+/* --- unregister helpers --- */
+async function findUnregisterDropdown(): Promise<WebdriverIO.Element> {
+  const anchor = await $(`android=new UiSelector().textMatches("(?i)^GET\\s+ALL\\s+PROFILES$")`)
+  await anchor.waitForDisplayed({ timeout: 8000 })
+  const aLoc  = await anchor.getLocation()
+  const aSize = await anchor.getSize()
+  const anchorMidY = aLoc.y + Math.floor(aSize.height/2)
+  const candidates = await $$(`android=new UiSelector().textMatches("(?i)^Select\\s+profile\\s+name$")`)
+  if (!candidates.length) throw new Error('No "Select profile name" found')
+  const below: { el: WebdriverIO.Element; y: number }[] = []
+  for (const el of candidates) {
+    const loc = await el.getLocation()
+    const size = await el.getSize()
+    const midY = loc.y + Math.floor(size.height/2)
+    if (midY > anchorMidY) below.push({ el, y: loc.y })
+  }
+  below.sort((a,b)=>a.y-b.y)
+  return below[0].el
+}
+async function chooseFirstRealProfileOption() {
+  const items = await $$('//android.widget.ListView//android.widget.CheckedTextView | //android.widget.ListView//android.widget.TextView')
+  for (const el of items) {
+    const txt = (await el.getText()).trim()
+    if (!txt) continue
+    if (/^select\s+profile\s+name$/i.test(txt)) continue
+    if (/^custom\s+profile\s+name$/i.test(txt)) continue
+    await el.click()
+    await sleep(200)
+    return
+  }
+  throw new Error('No real profile in list')
+}
 
-/* ---------------- the test ---------------- */
-
-describe('Reregister Same NVM Profile', () => {
+/* ---------- the test ---------- */
+describe('Negative flow: Register (0) → Re-register (-6) → Unregister (0)', () => {
   const PROFILE_LOCAL  = path.resolve(__dirname, '../../apps/nap_json1.txt')
   const PROFILE_REMOTE = '/sdcard/nap_json1.txt'
   const APP_LABEL      = 'Knox SDK Test Tool'
 
-  before(() => {
-    allure.addFeature('Profile Management')
-    allure.addStory('Push + Register NVM profile')
-    allure.addSeverity('normal')
-  })
+  it('does the full cycle', async () => {
+    await clearRecents()
+    await forceStopKnoxIfConfigured()
 
-  it('pushes profile, opens Knox SDK tool, selects it, and registers', async () => {
+    // --- Register first time (expect 0) ---
+    await step('Push + Register', async () => {
+      await adbPush(PROFILE_LOCAL, PROFILE_REMOTE)
+      await openAppFromDrawer(APP_LABEL, 10)
+      await tapIfVisibleText(/Knox Policies List/i, 2000)
+      await tapIfVisibleText(/Network Analytics/i, 4000)
+      await tapIfVisibleText(/^Select JSON file location$/i, 4000)
+      await tapIfVisibleText(/\/sdcard\/nap_json1\.txt/i, 4000)
+      await tapIfVisibleText(/^REGISTER CLIENT$/i, 4000)
+      if (!(await waitForResult(0, 10000))) throw new Error('Expected result=0 not observed')
+    })
 
     await clearRecents()
     await forceStopKnoxIfConfigured()
-    await step('Push JSON profile to device', async () => {
-      await adbPush(PROFILE_LOCAL, PROFILE_REMOTE)
-    })
 
-    await step('Launch Knox SDK Test Tool', async () => {
-      const opened = await openAppFromDrawer(APP_LABEL, 10)
-      if (!opened) throw new Error('Could not launch Knox SDK Test Tool from drawer')
-    })
-
-    await step('Navigate to Network Analytics', async () => {
-      await tapIfVisibleText(/Knox Policies List/i, 4000)
-      if (!(await tapIfVisibleText(/Network Analytics/i, 5000))) {
-        await tapIfVisibleText(/Knox Tests/i, 2000)
-        await tapIfVisibleText(/Network Analytics/i, 5000)
-      }
-    })
-
-    await step('Select pushed profile file', async () => {
+    // --- Re-register same (expect -6) ---
+    await step('Re-register same JSON', async () => {
+      await openAppFromDrawer(APP_LABEL, 10)
+      await tapIfVisibleText(/Knox Policies List/i, 2000)
+      await tapIfVisibleText(/Network Analytics/i, 4000)
       await tapIfVisibleText(/^Select JSON file location$/i, 4000)
-      if (!(await tapIfVisibleText(/\/sdcard\/nap_json1\.txt/i, 5000))) {
-        throw new Error('Profile file not selectable under /sdcard/')
-      }
+      await tapIfVisibleText(/\/sdcard\/nap_json1\.txt/i, 4000)
+      await tapIfVisibleText(/^REGISTER CLIENT$/i, 4000)
+      if (!(await waitForResult(-6, 10000))) throw new Error('Expected result=-6 not observed')
     })
 
-    await step('Register client', async () => {
-      if (!(await tapIfVisibleText(/^REGISTER CLIENT$/i, 6000))) {
-        throw new Error('REGISTER CLIENT button not found or not clickable')
-      }
-      await sleep(500)
-    })
-    await step('Validate "Registration result = -6"', async () => {
-    const ok = await waitForRegisterResultZero(10000)
-    if (!ok) {
-        await takeAndAttachScreenshot('Register result not found')
-        throw new Error('Did not observe success message (…result = -6) within 10s')
-    }
+    // --- Unregister via 2nd dropdown ---
+    await step('Unregister original profile', async () => {
+      const spinner = await findUnregisterDropdown()
+      await spinner.click()
+      await chooseFirstRealProfileOption()
+      await tapIfVisibleText(/^UNREGISTER CLIENT$/i, 5000)
+      if (!(await waitForResult(0, 10000))) throw new Error('Expected Unregistration result=0 not observed')
     })
   })
 })
-
-
-
-
-
-
-// // test/specs/push-and-register.e2e.ts
-// import { $, $$, driver } from '@wdio/globals'
-// import path from 'node:path'
-// import { exec as _exec } from 'node:child_process'
-// import { promisify } from 'node:util'
-
-// const exec = promisify(_exec)
-
-// /* ---------------- tiny helpers ---------------- */
-// const sleep = (ms: number) => new Promise(res => setTimeout(res, ms))
-
-// async function adbPush(localAbs: string, remoteAbs: string) {
-//   const base = `adb push "${localAbs}" "${remoteAbs}"`
-//   const cmd  = process.platform === 'win32' ? `cmd /c ${base}` : base
-//   await exec(cmd)
-// }
-
-// async function waitForAnyText(regexes: RegExp[], timeoutMs: number): Promise<boolean> {
-//   const end = Date.now() + timeoutMs
-//   while (Date.now() < end) {
-//     for (const rgx of regexes) {
-//       try {
-//         const els = await $$(`android=new UiSelector().textMatches("${rgx.source}")`)
-//         for (const el of els as unknown as WebdriverIO.Element[]) {
-//           if (await el.isDisplayed()) return true
-//         }
-//       } catch {}
-//     }
-//     await sleep(300)
-//   }
-//   return false
-// }
-
-// async function tapIfVisibleText(regex: RegExp, timeout = 3000): Promise<boolean> {
-//   const end = Date.now() + timeout
-//   while (Date.now() < end) {
-//     try {
-//       const els = await $$(`android=new UiSelector().textMatches("${regex.source}")`)
-//       for (const el of els as unknown as WebdriverIO.Element[]) {
-//         if (await el.isDisplayed()) {
-//           await el.click()
-//           await sleep(200)
-//           return true
-//         }
-//       }
-//     } catch {}
-//     await sleep(300)
-//   }
-//   return false
-// }
-
-// /** tap the center of an element using getLocation/getSize (typed) */
-// async function tapCenter(el: WebdriverIO.Element) {
-//   const loc = await el.getLocation()
-//   const size = await el.getSize()
-//   const tapX = Math.floor(loc.x + size.width / 2)
-//   const tapY = Math.floor(loc.y + size.height / 2)
-//   await driver.performActions([{
-//     type: 'pointer', id: 'finger-tap', parameters: { pointerType: 'touch' },
-//     actions: [
-//       { type: 'pointerMove', duration: 0, x: tapX, y: tapY },
-//       { type: 'pointerDown', button: 0 },
-//       { type: 'pause', duration: 50 },
-//       { type: 'pointerUp', button: 0 }
-//     ]
-//   }])
-// }
-
-// /**
-//  * Open an app from Samsung app drawer by visible label.
-//  * - Swipes UP to open drawer
-//  * - Swipes LEFT across pages
-//  * - When the label is visible: tries parent-clickable, label-click, then coordinate tap
-//  * - Waits until Knox screen text appears
-//  */
-// async function openAppFromDrawer(appName: string, pageLimit = 8): Promise<boolean> {
-//   // HOME
-//   await driver.execute('mobile: pressKey', { keycode: 3 })
-//   await sleep(600)
-
-//   // open drawer (swipe up)
-//   const { width, height } = await driver.getWindowSize()
-//   const upStart = { x: Math.floor(width / 2), y: Math.floor(height * 0.88) }
-//   const upEnd   = { x: Math.floor(width / 2), y: Math.floor(height * 0.20) }
-
-//   await driver.performActions([{
-//     type: 'pointer', id: 'finger-open', parameters: { pointerType: 'touch' },
-//     actions: [
-//       { type: 'pointerMove', duration: 0, x: upStart.x, y: upStart.y },
-//       { type: 'pointerDown', button: 0 },
-//       { type: 'pause', duration: 150 },
-//       { type: 'pointerMove', duration: 300, x: upEnd.x, y: upEnd.y },
-//       { type: 'pointerUp', button: 0 }
-//     ]
-//   }])
-//   await sleep(700)
-
-//   const midY = Math.floor(height * 0.45)
-//   const leftStartX = Math.floor(width * 0.85)
-//   const leftEndX   = Math.floor(width * 0.15)
-
-//   for (let i = 0; i < pageLimit; i++) {
-//     const label = await $(`android=new UiSelector().text("${appName}")`) as unknown as WebdriverIO.Element
-//     if (await label.isExisting() && await label.isDisplayed()) {
-//       // ---- always tap coordinates of label’s bounding box ----
-//       const loc = await label.getLocation()
-//       const size = await label.getSize()
-//       const tapX = Math.floor(loc.x + size.width / 2)
-//       const tapY = Math.floor(loc.y + size.height / 2)
-
-//       await driver.performActions([{
-//         type: 'pointer', id: 'finger-tap', parameters: { pointerType: 'touch' },
-//         actions: [
-//           { type: 'pointerMove', duration: 0, x: tapX, y: tapY },
-//           { type: 'pointerDown', button: 0 },
-//           { type: 'pause', duration: 80 },
-//           { type: 'pointerUp', button: 0 }
-//         ]
-//       }])
-
-//       // wait for Knox screen to appear
-//       const appeared = await waitForAnyText(
-//         [/Knox Policies List/i, /Knox Tests/i, /Network Analytics/i],
-//         5000
-//       )
-//       if (appeared) {
-//         console.log(`✓ Opened "${appName}" by coordinate tap`)
-//         return true
-//       }
-//     }
-
-//     // go to next page (to the right)
-//     await driver.performActions([{
-//       type: 'pointer', id: 'finger-left', parameters: { pointerType: 'touch' },
-//       actions: [
-//         { type: 'pointerMove', duration: 0, x: leftStartX, y: midY },
-//         { type: 'pointerDown', button: 0 },
-//         { type: 'pause', duration: 120 },
-//         { type: 'pointerMove', duration: 280, x: leftEndX, y: midY },
-//         { type: 'pointerUp', button: 0 }
-//       ]
-//     }])
-//     await sleep(700)
-//   }
-
-//   return false
-// }
-
-
-// /* ---------------- the test ---------------- */
-// describe('Push NVM profile and register in Knox SDK Test Tool', () => {
-//   const PROFILE_LOCAL  = path.resolve(__dirname, '../../apps/nap_json1.txt')
-//   const PROFILE_REMOTE = '/sdcard/nap_json1.txt'
-//   const APP_LABEL      = 'Knox SDK Test Tool'
-
-//   it('pushes profile, opens Knox, selects it, and registers', async () => {
-//     // 1) push profile
-//     await adbPush(PROFILE_LOCAL, PROFILE_REMOTE)
-//     console.log(`✓ Pushed profile to ${PROFILE_REMOTE}`)
-
-//     // 2) open the SDK tool robustly
-//     const opened = await openAppFromDrawer(APP_LABEL, 10)
-//     if (!opened) throw new Error('Could not open Knox SDK Test Tool')
-
-//     // 3) Go to "Knox Policies List" (if button visible)
-//     await tapIfVisibleText(/Knox Policies List/i, 4000)
-
-//     // 4) Open "Network Analytics"
-//     if (!(await tapIfVisibleText(/Network Analytics/i, 5000))) {
-//       await tapIfVisibleText(/Knox Tests/i, 2000)
-//       await tapIfVisibleText(/Network Analytics/i, 5000)
-//     }
-
-//     // 5) Choose file from dropdown
-//     await tapIfVisibleText(/^Select JSON file location$/i, 4000)
-//     await tapIfVisibleText(/\/sdcard\/nap_json1\.txt/i, 5000)
-
-//     // 6) Register client
-//     await tapIfVisibleText(/^REGISTER CLIENT$/i, 6000)
-
-//     console.log('✓ Profile pushed & registered')
-//     await sleep(800)
-//   })
-// })

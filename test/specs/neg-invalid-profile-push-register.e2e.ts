@@ -1,4 +1,4 @@
-// test/specs/push-and-register.e2e.ts
+// test/specs/neg-invalid-prodile-push-register.e2e.ts
 import { $, $$, driver } from '@wdio/globals'
 import allure from '@wdio/allure-reporter'
 import { Status } from 'allure-js-commons'
