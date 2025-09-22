@@ -67,9 +67,9 @@ const SUITES = {
     'test/specs/uninstall-adb.e2e.ts',
   ],
   NEGATIVES: [
-    'test/specs/neg-reregister-same-profile.e2e.ts',
+    'test/specs/neg-Reregister-same-profile.e2e.ts',
     'test/specs/neg-invalid-profile-push-register.e2e.ts',
-    'test/specs/neg-uninstall-when-not-installed.e2e.ts',
+    'test/specs/neg-uninstall-not-installed.e2e.ts',
   ],
 };
 
