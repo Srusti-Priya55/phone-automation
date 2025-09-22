@@ -1,17 +1,25 @@
-#!/usr/bin/env node
+// scripts/sanity_runner.mjs
+// Node ESM runner to execute WDIO specs based on Jenkins boolean parameters.
+// Works on Windows agents (uses `npx` with { shell: true } and absolute paths).
+
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
+// --- 1) Read Jenkins boolean params (checkboxes) ---
+// Jenkins passes them as environment variables with values "true"/"false"
 const flags = {
-  RUN_ALL: process.env.RUN_ALL === 'true' || process.env.RUN_ALL === 'on' || process.env.RUN_ALL === '1',
-  INSTALL_ADB: process.env.INSTALL_ADB === 'true' || process.env.INSTALL_ADB === 'on' || process.env.INSTALL_ADB === '1',
-  INSTALL_PLAY: process.env.INSTALL_PLAY === 'true' || process.env.INSTALL_PLAY === 'on' || process.env.INSTALL_PLAY === '1',
-  AGGREGATION_CHECK: process.env.AGGREGATION_CHECK === 'true' || process.env.AGGREGATION_CHECK === 'on' || process.env.AGGREGATION_CHECK === '1',
-  TND_CHECK: process.env.TND_CHECK === 'true' || process.env.TND_CHECK === 'on' || process.env.TND_CHECK === '1',
-  NEGATIVES: process.env.NEGATIVES === 'true' || process.env.NEGATIVES === 'on' || process.env.NEGATIVES === '1',
+  RUN_ALL:           toBool(process.env.RUN_ALL),
+  INSTALL_ADB:       toBool(process.env.INSTALL_ADB),
+  INSTALL_PLAY:      toBool(process.env.INSTALL_PLAY),
+  AGGREGATION_CHECK: toBool(process.env.AGGREGATION_CHECK),
+  TND_CHECK:         toBool(process.env.TND_CHECK),
+  NEGATIVES:         toBool(process.env.NEGATIVES),
 };
 
+console.log('Effective flags:', flags);
+
+// If RUN_ALL was checked, enable all feature flags
 if (flags.RUN_ALL) {
   flags.INSTALL_ADB = true;
   flags.INSTALL_PLAY = true;
@@ -20,116 +28,119 @@ if (flags.RUN_ALL) {
   flags.NEGATIVES = true;
 }
 
-console.log('Effective flags:', flags);
-
-// Always use FORWARD SLASHES for WDIO, even on Windows
-const p = (rel) => rel.replace(/\\/g, '/');
-
-// Define the spec sets (use forward slashes)
-const SETS = {
+// --- 2) Map each checkbox to a list of WDIO spec files (POSIX-style paths) ---
+const SUITES = {
   INSTALL_ADB: [
-    p('test/specs/install-adb.e2e.ts'),
-    p('test/specs/push-and-register.e2e.ts'),
-    p('test/specs/add-asa-and-connect.e2e.ts'),
-    p('test/specs/nvm-service-check.e2e.ts'),
-    p('test/specs/interface-change-check.e2e.ts'),
-    p('test/specs/unregister-profile.e2e.ts'),
-    p('test/specs/uninstall-adb.e2e.ts'),
+    'test/specs/install-adb.e2e.ts',
+    'test/specs/push-and-register.e2e.ts',
+    'test/specs/add-asa-and-connect.e2e.ts',
+    'test/specs/nvm-service-check.e2e.ts',
+    'test/specs/interface-change-check.e2e.ts',
+    'test/specs/unregister-profile.e2e.ts',
+    'test/specs/uninstall-adb.e2e.ts',
   ],
   INSTALL_PLAY: [
-    p('test/specs/install-play.e2e.ts'),
-    p('test/specs/push-and-register.e2e.ts'),
-    p('test/specs/add-asa-and-connect.e2e.ts'),
-    p('test/specs/nvm-service-check.e2e.ts'),
-    p('test/specs/interface-change-check.e2e.ts'),
-    p('test/specs/unregister-profile.e2e.ts'),
-    p('test/specs/uninstall-play.e2e.ts'),
+    'test/specs/install-play.e2e.ts',
+    'test/specs/push-and-register.e2e.ts',
+    'test/specs/add-asa-and-connect.e2e.ts',
+    'test/specs/nvm-service-check.e2e.ts',
+    'test/specs/interface-change-check.e2e.ts',
+    'test/specs/unregister-profile.e2e.ts',
+    'test/specs/uninstall-play.e2e.ts',
   ],
   AGGREGATION_CHECK: [
-    p('test/specs/install-adb.e2e.ts'),
-    p('test/specs/aggregation-check.e2e.ts'),
-    p('test/specs/add-asa-and-connect.e2e.ts'),
-    p('test/specs/nvm-service-check.e2e.ts'),
-    p('test/specs/interface-change-check.e2e.ts'),
-    p('test/specs/unregister-profile.e2e.ts'),
-    p('test/specs/uninstall-adb.e2e.ts'),
+    'test/specs/install-adb.e2e.ts',
+    'test/specs/aggregation-check.e2e.ts',
+    'test/specs/add-asa-and-connect.e2e.ts',
+    'test/specs/nvm-service-check.e2e.ts',
+    'test/specs/interface-change-check.e2e.ts',
+    'test/specs/unregister-profile.e2e.ts',
+    'test/specs/uninstall-adb.e2e.ts',
   ],
   TND_CHECK: [
-    p('test/specs/install-adb.e2e.ts'),
-    p('test/specs/tnd-check.e2e.ts'),
-    p('test/specs/add-asa-and-connect.e2e.ts'),
-    p('test/specs/nvm-service-check.e2e.ts'),
-    p('test/specs/interface-change-check.e2e.ts'),
-    p('test/specs/unregister-profile.e2e.ts'),
-    p('test/specs/uninstall-adb.e2e.ts'),
+    'test/specs/install-adb.e2e.ts',
+    'test/specs/tnd-check.e2e.ts',
+    'test/specs/add-asa-and-connect.e2e.ts',
+    'test/specs/nvm-service-check.e2e.ts',
+    'test/specs/interface-change-check.e2e.ts',
+    'test/specs/unregister-profile.e2e.ts',
+    'test/specs/uninstall-adb.e2e.ts',
   ],
   NEGATIVES: [
-    p('test/specs/neg-Reregister-same-profile.e2e.ts'),
-    p('test/specs/neg-invalid-profile-push-register.e2e.ts'),
-    p('test/specs/neg-uninstall-not-installed.e2e.ts'),
+    'test/specs/neg-reregister-same-profile.e2e.ts',
+    'test/specs/neg-invalid-profile-push-register.e2e.ts',
+    'test/specs/neg-uninstall-when-not-installed.e2e.ts',
   ],
 };
 
-// Build the final list in order
-const orderedKeys = ['INSTALL_ADB', 'INSTALL_PLAY', 'AGGREGATION_CHECK', 'TND_CHECK', 'NEGATIVES'];
-let specs = [];
-for (const key of orderedKeys) {
-  if (flags[key]) specs = specs.concat(SETS[key]);
+// --- 3) Build the final spec list in the order you want ---
+const specs = [];
+for (const [key, list] of Object.entries(SUITES)) {
+  if (flags[key]) specs.push(...list);
 }
 
-// De-duplicate while preserving order
-const seen = new Set();
-specs = specs.filter(s => (seen.has(s) ? false : (seen.add(s), true)));
-
-if (!specs.length) {
-  console.log('No features selected → exiting 0');
-  process.exit(0);
+// If nothing was selected, fail early with a clear message
+if (specs.length === 0) {
+  console.error(
+    'No features selected. Check at least one checkbox (or RUN_ALL).'
+  );
+  process.exit(2);
 }
 
-// Verify existence and print helpful error if something is missing
-const missing = specs.filter(rel => !fs.existsSync(path.resolve(rel)));
+// --- 4) Verify each spec actually exists on disk (prevents WDIO not-found) ---
+const missing = specs.filter(p => !existsPosix(p));
 if (missing.length) {
-  console.error('These spec files were not found (check file names/paths):');
-  missing.forEach(m => console.error('  -', m));
-  process.exit(1);
+  console.error('These spec files were not found:\n - ' + missing.join('\n - '));
+  process.exit(3);
 }
 
-// Prefer npm ci when package-lock.json is present (faster & reproducible)
-const hasLock = fs.existsSync(path.resolve('package-lock.json'));
-const installCmd = hasLock ? 'npm ci' : 'npm install';
+// --- 5) Run `npm ci` (fresh, reproducible install) and then WDIO with --spec ---
+await runNpmCi();
+await runWdio(specs);
 
-// Run install first (only when node_modules is absent)
-const needInstall = !fs.existsSync(path.resolve('node_modules'));
+// ------------- helpers -------------
+function toBool(v) {
+  if (!v) return false;
+  return String(v).trim().toLowerCase() === 'true';
+}
 
-const runWdio = () => {
-  const specArg = specs.join(',');
-  console.log(`\n=== WDIO: ${specs.join(',')} ===\n`);
-  const child = spawn(
-    process.platform === 'win32' ? 'npx.cmd' : 'npx',
-    ['wdio', 'run', './wdio.conf.ts', '--spec', specArg],
-    { stdio: 'inherit' }
-  );
-  child.on('close', code => process.exit(code));
-  child.on('error', err => {
-    console.error('Error starting WDIO:', err);
-    process.exit(1);
-  });
-};
+// Check file existence for a POSIX-style path relative to workspace
+function existsPosix(posixRelPath) {
+  const abs = path.resolve(posixRelPath.split('/').join(path.sep));
+  try {
+    return fs.existsSync(abs);
+  } catch {
+    return false;
+  }
+}
 
-if (needInstall) {
-  console.log(`Running ${installCmd} ...`);
-  const child = spawn(process.platform === 'win32' ? 'cmd' : 'bash',
-    [process.platform === 'win32' ? '/c' : '-lc', installCmd],
-    { stdio: 'inherit' }
-  );
-  child.on('close', code => {
-    if (code !== 0) process.exit(code);
-    runWdio();
+function runNpmCi() {
+  console.log('\n=== npm ci (clean install) ===\n');
+  return new Promise((resolve, reject) => {
+    const child = spawn('npm', ['ci'], { stdio: 'inherit', shell: true });
+    child.on('close', code => (code === 0 ? resolve() : reject(new Error(`npm ci exit ${code}`))));
+    child.on('error', reject);
   });
-  child.on('error', err => {
-    console.error('Error running install:', err);
-    process.exit(1);
+}
+
+function runWdio(specList) {
+  const specArg = specList.join(',');
+  const wdioConfAbs = path.resolve('wdio.conf.ts'); // absolute path (Windows-safe)
+
+  console.log(`\n=== WDIO: ${specArg} ===\n`);
+
+  return new Promise((resolve, reject) => {
+    // Always call `npx` and use shell:true so Windows resolves npx.cmd correctly
+    const child = spawn(
+      'npx',
+      ['wdio', 'run', wdioConfAbs, '--spec', specArg],
+      { stdio: 'inherit', shell: true }
+    );
+
+    child.on('close', code => {
+      if (code === 0) resolve();
+      else reject(new Error(`WDIO exit ${code}`));
+    });
+    child.on('error', reject);
   });
-} else {
-  runWdio();
 }
