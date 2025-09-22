@@ -6,6 +6,8 @@ import path from 'node:path'
 import { exec as _exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import { step } from '../utils/report'
+import { clearRecents, forceStopKnoxIfConfigured, ensureKnoxAtRoot } from '../utils/app-reset'
+
 
 
 const exec = promisify(_exec)
@@ -155,6 +157,8 @@ describe('TND Check- Push and Register NVM Profile', () => {
   })
 
   it('pushes profile, opens Knox SDK tool, selects it, registers, toggles Wi-Fi and captures TND logs', async () => {
+    await clearRecents()
+    await forceStopKnoxIfConfigured()
     await step('Push JSON profile to device', async () => {
       await adbPush(PROFILE_LOCAL, PROFILE_REMOTE)
     })
