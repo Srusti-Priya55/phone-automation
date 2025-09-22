@@ -5,7 +5,7 @@
   "type": "commonjs",
   "scripts": {
     "wdio": "wdio run ./wdio.conf.ts",
-    "menu": "ts-node ./scripts/select-run.ts",
+    "sanity:run": "node scripts/sanity_runner.mjs",
     "e2e:adb": "E2E_CHAIN=1 OPEN_ALLURE=1 wdio run ./wdio.conf.ts --spec ./test/specs/E2E-adb.e2e.ts",
     "e2e:play": "E2E_CHAIN=1 OPEN_ALLURE=1 wdio run ./wdio.conf.ts --spec ./test/specs/E2E-play.e2e.ts",
     "allure:clean": "rimraf allure-results allure-report || rd /s /q allure-results allure-report",
