@@ -21,59 +21,58 @@ export const config: WebdriverIO.Config = {
    * SUITES for Jenkins checkboxes
    * (names are simple and match your manager’s wording)
    */
-suites: {
-  // 1) Installation via ADB
-  install_adb: [
-    'test/specs/install-adb.e2e.ts',
-    'test/specs/push-and-register.e2e.ts',
-    'test/specs/add-asa-and-connect.e2e.ts',
-    'test/specs/nvm-service-check.e2e.ts',
-    'test/specs/interface-change-check.e2e.ts',
-    'test/specs/unregister-profile.e2e.ts',
-    'test/specs/uninstall-adb.e2e.ts',
-  ],
+  suites: {
+    // 1) Installation via ADB
+    install_adb: [
+      'test/specs/install-adb.e2e.ts',
+      'test/specs/push-and-register.e2e.ts',
+      'test/specs/add-asa-and-connect.e2e.ts',
+      'test/specs/nvm-service-check.e2e.ts',
+      'test/specs/interface-change-check.e2e.ts',
+      'test/specs/unregister-profile.e2e.ts',
+      'test/specs/uninstall-adb.e2e.ts',
+    ],
 
-  // 2) Installation via Play Store
-  install_play: [
-    'test/specs/install-play.e2e.ts',
-    'test/specs/push-and-register.e2e.ts',
-    'test/specs/add-asa-and-connect.e2e.ts',
-    'test/specs/nvm-service-check.e2e.ts',
-    'test/specs/interface-change-check.e2e.ts',
-    'test/specs/unregister-profile.e2e.ts',
-    'test/specs/uninstall-play.e2e.ts',
-  ],
+    // 2) Installation via Play Store
+    install_play: [
+      'test/specs/install-play.e2e.ts',
+      'test/specs/push-and-register.e2e.ts',
+      'test/specs/add-asa-and-connect.e2e.ts',
+      'test/specs/nvm-service-check.e2e.ts',
+      'test/specs/interface-change-check.e2e.ts',
+      'test/specs/unregister-profile.e2e.ts',
+      'test/specs/uninstall-play.e2e.ts',
+    ],
 
-  // 3) Aggregation check (ADB install path)
-  aggregation_check: [
-    'test/specs/install-adb.e2e.ts',
-    'test/specs/aggregation-check.e2e.ts',
-    'test/specs/add-asa-and-connect.e2e.ts',
-    'test/specs/nvm-service-check.e2e.ts',
-    'test/specs/interface-change-check.e2e.ts',
-    'test/specs/unregister-profile.e2e.ts',
-    'test/specs/uninstall-adb.e2e.ts',
-  ],
+    // 3) Aggregation check (same flow, swap aggregation step)
+    aggregation: [
+      'test/specs/install-adb.e2e.ts',
+      'test/specs/aggregation-check.e2e.ts',
+      'test/specs/add-asa-and-connect.e2e.ts',
+      'test/specs/nvm-service-check.e2e.ts',
+      'test/specs/interface-change-check.e2e.ts',
+      'test/specs/unregister-profile.e2e.ts',
+      'test/specs/uninstall-adb.e2e.ts',
+    ],
 
-  // 4) TND check (ADB install path)
-  tnd_check: [
-    'test/specs/install-adb.e2e.ts',
-    'test/specs/tnd-check.e2e.ts',
-    'test/specs/add-asa-and-connect.e2e.ts',
-    'test/specs/nvm-service-check.e2e.ts',
-    'test/specs/interface-change-check.e2e.ts',
-    'test/specs/unregister-profile.e2e.ts',
-    'test/specs/uninstall-adb.e2e.ts',
-  ],
+    // 4) TND check (same flow, swap TND step)
+    tnd: [
+      'test/specs/install-adb.e2e.ts',
+      'test/specs/tnd-check.e2e.ts',
+      'test/specs/add-asa-and-connect.e2e.ts',
+      'test/specs/nvm-service-check.e2e.ts',
+      'test/specs/interface-change-check.e2e.ts',
+      'test/specs/unregister-profile.e2e.ts',
+      'test/specs/uninstall-adb.e2e.ts',
+    ],
 
-  // 5) Negatives pack
-  negatives: [
-    'test/specs/neg-Reregister-same-profile.e2e.ts',
-    'test/specs/neg-invalid-profile-push-register.e2e.ts',
-    'test/specs/neg-uninstall-not-installed.e2e.ts',
-  ],
-},
-
+    // 5) Negatives pack
+    negatives: [
+      'test/specs/neg-Reregister-same-profile.e2e.ts',       // note: capital "R" matches your file
+      'test/specs/neg-invalid-profile-push-register.e2e.ts',
+      'test/specs/neg-uninstall-not-installed.e2e.ts',
+    ],
+  },
 
   maxInstances: 1,
   capabilities: [androidRealCaps as any],
