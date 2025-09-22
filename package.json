@@ -6,8 +6,8 @@
   "scripts": {
     "wdio": "wdio run ./wdio.conf.ts",
     "menu": "ts-node ./scripts/select-run.ts",
-    "e2e:adb": "cross-env E2E_CHAIN=1 OPEN_ALLURE=1 wdio run ./wdio.conf.ts --spec ./test/specs/E2E-adb.e2e.ts",
-    "e2e:play": "cross-env E2E_CHAIN=1 OPEN_ALLURE=1 wdio run ./wdio.conf.ts --spec ./test/specs/E2E-play.e2e.ts",
+    "e2e:adb": "E2E_CHAIN=1 OPEN_ALLURE=1 wdio run ./wdio.conf.ts --spec ./test/specs/E2E-adb.e2e.ts",
+    "e2e:play": "E2E_CHAIN=1 OPEN_ALLURE=1 wdio run ./wdio.conf.ts --spec ./test/specs/E2E-play.e2e.ts",
     "allure:clean": "rimraf allure-results allure-report || rd /s /q allure-results allure-report",
     "allure:build": "allure generate ./allure-results --clean -o ./allure-report",
     "allure:open": "allure open ./allure-report"
@@ -32,7 +32,6 @@
     "rimraf": "^5.0.10",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4",
-    "webdriverio": "^9.19.2",
-    "cross-env": "^7.0.3"
+    "webdriverio": "^9.19.2"
   }
 }
