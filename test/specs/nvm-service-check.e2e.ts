@@ -1,12 +1,7 @@
 // test/specs/nvm-service-check.e2e.ts
 import { driver, $ } from '@wdio/globals'
 import allure from '@wdio/allure-reporter'
-import { Status } from 'allure-js-commons'
 import { step } from '../utils/report'
-
-// === NEW imports for adb helpers ===
-import { exec as _exec } from 'node:child_process'
-import { promisify } from 'node:util'
 
 const SETTINGS_PKG = 'com.android.settings'
 const SERVICE_NAME = 'Cisco Secure Client'
@@ -59,7 +54,6 @@ async function scrollTextIntoView(text: string, maxSwipes = 10): Promise<boolean
 
 async function openDeveloperOptionsDirect(): Promise<void> {
   try {
-    // Appium mobile shell (works on Appium 2 / UIA2)
     await driver.execute('mobile: shell', {
       command: 'am',
       args: ['start', '-a', 'android.settings.APPLICATION_DEVELOPMENT_SETTINGS'],
@@ -75,7 +69,9 @@ async function openDeveloperOptionsDirect(): Promise<void> {
   }
 }
 
-/* ========= NEW: adb helpers for log capture ========= */
+// --- new: read nvmagent logs helper ---
+import { exec as _exec } from 'node:child_process'
+import { promisify } from 'node:util'
 const exec = promisify(_exec)
 
 async function runCmd(cmd: string) {
@@ -83,20 +79,26 @@ async function runCmd(cmd: string) {
   return exec(full, { maxBuffer: 10 * 1024 * 1024 })
 }
 
-/** Read only nvmagent lines from logcat (never throws; returns empty string on error). */
-async function readNvmAgentLogs(): Promise<string> {
-  const grepCmd = process.platform === 'win32'
-    ? `adb logcat -d | findstr /i nvmagent`
-    : `adb logcat -d | grep -i nvmagent || true`
+async function readNvmAgentLogsWithRetry(tries = 3, delayMs = 2000): Promise<string> {
+  const isWin = process.platform === 'win32'
+  const cmd = isWin
+    ? `adb logcat -v time -d | findstr /i /c:"nvmagent"`
+    : `adb logcat -v time -d | grep -i "nvmagent" || true`
 
-  try {
-    const { stdout } = await runCmd(grepCmd)
-    return (stdout || '').trim()
-  } catch {
-    return ''
+  let last = ''
+  for (let i = 0; i < tries; i++) {
+    try {
+      const { stdout } = await runCmd(cmd)
+      const out = (stdout || '').trim()
+      if (out) return out
+      last = out
+    } catch {
+      last = ''
+    }
+    await sleep(delayMs)
   }
+  return last || '(no nvmagent lines found yet)'
 }
-/* ==================================================== */
 
 export async function runCheckNvmService() {
   await step('Open Android Settings', async () => {
@@ -105,17 +107,14 @@ export async function runCheckNvmService() {
   })
 
   await step('Go to Developer options', async () => {
-    // Many devices show Developer options near the bottom — scroll to it
     const found = await scrollTextIntoView('Developer options', 12)
     if (found) {
       await tapIfText(/^Developer options$/i, 2000)
     } else {
-      // Fallback: open Developer options directly via intent/activity
       await openDeveloperOptionsDirect()
     }
-    // Assert we actually are inside Dev options by checking for "Running services" or a known entry
     const marker =
-      await tapIfText(/Running services/i, 1000) || // if visible already, great — we clicked it
+      await tapIfText(/Running services/i, 1000) ||
       (await $(`android=new UiSelector().textMatches("(?i)Running services")`).isExisting()) ||
       (await $(`android=new UiSelector().textMatches("(?i)Developer options")`).isExisting())
     if (!marker) {
@@ -124,7 +123,6 @@ export async function runCheckNvmService() {
   })
 
   await step('Open Running services', async () => {
-    // If we didn’t tap it above, scroll to it now
     const alreadyHere = await $(`android=new UiSelector().textMatches("(?i)^Running services$")`).isDisplayed().catch(() => false)
     if (!alreadyHere) {
       const ok = await scrollTextIntoView('Running services', 10)
@@ -136,10 +134,8 @@ export async function runCheckNvmService() {
   })
 
   await step('Verify Cisco Secure Client is listed', async () => {
-    // Try visible first
     let svc = await $(`android=new UiSelector().textContains("${SERVICE_NAME}")`)
     if (!(await svc.isExisting())) {
-      // Scroll the list of running services if long
       const ok = await scrollTextIntoView(SERVICE_NAME, 10)
       if (!ok) {
         throw new Error(`Expected "${SERVICE_NAME}" in Running services, but it was not found`)
@@ -149,30 +145,22 @@ export async function runCheckNvmService() {
     if (!(await svc.isDisplayed())) {
       throw new Error(`Expected "${SERVICE_NAME}" service not visible after scrolling`)
     }
-    // Success screenshot (explicit request)
     await takeAndAttachScreenshot('Cisco Secure Client - Running Services')
   })
 
-  // === NEW: capture nvmagent logs now that service is confirmed running ===
-  await step('Capture nvmagent logs (after service check)', async () => {
-    // Clear old logs first so we only capture “fresh” lines
-    await runCmd('adb logcat -c').catch(() => {})
-    await sleep(3000) // give the service a few seconds to emit logs
-
-    const lines = await readNvmAgentLogs()
-    allure.addAttachment(
-      'nvmagent logs (post-service-check)',
-      lines || '(no nvmagent lines found yet)',
-      'text/plain'
-    )
+  // --- new: capture nvmagent logs ---
+  await step('Capture nvmagent logs (while service is running)', async () => {
+    await sleep(1000)
+    const txt = await readNvmAgentLogsWithRetry(4, 1500)
+    allure.addAttachment('nvmagent logcat (service check)', txt, 'text/plain')
   })
 }
 
 /* ---------- The Test (kept runnable by itself) ---------- */
 if (!process.env.E2E_CHAIN) {
-describe('Verify Cisco Secure Client [NVM] service is running', () => {
-  it('navigates to Running Services and checks Cisco Secure Client', async () => {
-    await runCheckNvmService()
+  describe('Verify Cisco Secure Client [NVM] service is running', () => {
+    it('navigates to Running Services and checks Cisco Secure Client', async () => {
+      await runCheckNvmService()
+    })
   })
-})
 }
