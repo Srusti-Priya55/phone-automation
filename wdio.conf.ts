@@ -107,11 +107,22 @@ beforeTest: async (test) => {
   const allure = require('@wdio/allure-reporter').default
   const flow = process.env.CURRENT_FLOW || 'Adhoc'
 
-  // FLAT grouping: put everything directly under the flow name
+  // 1) Group everything under the selected flow (Aggregation / TND / Negatives)
   allure.addLabel('parentSuite', flow)
-  allure.addLabel('suite', test.title)
 
+  // 2) Show ONE row per spec file (not per `it()`).
+  //    Use the filename (without extension) as the suite name.
+  const fileName =
+    (test.file || '')
+      .split(/[\\/]/)        // handle Windows + POSIX paths
+      .pop()                 // just the file
+      ?.replace(/\.(ts|js)$/, '')   // drop extension
+    || test.parent           // fallback
 
+  allure.addLabel('suite', fileName)
+
+  // IMPORTANT: do NOT add testCaseId or anything using test.title here,
+  // or Allure will create extra rows.
 },
 
   afterTest: async (test, _context, { passed }) => {
