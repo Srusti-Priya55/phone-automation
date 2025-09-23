@@ -92,7 +92,7 @@ export async function runUninstallAdb() {
 }
 
 /** ---- Test ---- */
-if (!process.env.E2E_CHAIN) {
+
 describe('Uninstall Cisco Secure Client via ADB', () => {
   before(() => {
     feature('Uninstallation')
@@ -104,4 +104,4 @@ describe('Uninstall Cisco Secure Client via ADB', () => {
     await runUninstallAdb()
   })
 })
-}
+

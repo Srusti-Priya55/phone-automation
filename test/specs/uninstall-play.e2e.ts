@@ -76,7 +76,7 @@ export async function runUninstallPlay() {
 }
 
 /* ---------------- the test ---------------- */
-if (!process.env.E2E_CHAIN) {
+
 describe('Uninstall Cisco Secure Client via Play Store', () => {
   before(() => {
     feature('Uninstallation')
@@ -88,7 +88,7 @@ describe('Uninstall Cisco Secure Client via Play Store', () => {
     await runUninstallPlay()
   })
 })
-}
+
 
 /* ---------------- helpers ---------------- */
 

@@ -76,7 +76,7 @@ async function readInterfaceChangeLogs(): Promise<string> {
 }
 
 /* ---------- the test ---------- */
-if (!process.env.E2E_CHAIN) {
+
   describe('Interface Change Check', () => {
     before(() => {
       allure.addFeature('Network')
@@ -110,7 +110,7 @@ if (!process.env.E2E_CHAIN) {
       })
     })
   })
-}
+
 
 /* ---------- APPENDED: exported runner for orchestrators ---------- */
 /** Re-usable runner for E2E flows. Mirrors the test steps above. */

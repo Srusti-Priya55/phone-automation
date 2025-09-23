@@ -157,10 +157,10 @@ export async function runCheckNvmService() {
 }
 
 /* ---------- The Test (kept runnable by itself) ---------- */
-if (!process.env.E2E_CHAIN) {
+
   describe('Verify Cisco Secure Client [NVM] service is running', () => {
     it('navigates to Running Services and checks Cisco Secure Client', async () => {
       await runCheckNvmService()
     })
   })
-}
+

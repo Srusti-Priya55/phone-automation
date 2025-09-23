@@ -132,13 +132,13 @@ async function handleFirstRunPopups(maxPasses = 5) {
   }
 }
 
-if (!process.env.E2E_CHAIN) {
+
   describe('Install via Play Store', () => {
     it('searches, installs, opens app, accepts OK/Allow', async () => {
       await runInstallPlay()
     })
   })
-}
+
 
 
 

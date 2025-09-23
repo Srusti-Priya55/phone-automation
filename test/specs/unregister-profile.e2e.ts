@@ -245,7 +245,7 @@ export async function runUnregisterProfile() {
 }
 
 /* ---------------- the test (with Jenkins-friendly tags) ---------------- */
-if (!process.env.E2E_CHAIN) {
+
 describe('Unregister NVM Profile)', () => {
   before(() => {
     feature('NVM')
@@ -257,4 +257,4 @@ describe('Unregister NVM Profile)', () => {
     await runUnregisterProfile()
   })
 })
-}
+

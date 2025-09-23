@@ -35,7 +35,6 @@ async function captureNvmLogs() {
   const { stdout } = await exec(cmd, { maxBuffer: 20 * 1024 * 1024 })
   allure.addAttachment('NVM Agent Logs', stdout, 'text/plain')
 }
-if (!process.env.E2E_CHAIN) {
     describe('Cisco Secure Client - add ASA, then connect via username and password', () => {
         before(() => {
         feature('VPN Connection')
@@ -91,7 +90,7 @@ if (!process.env.E2E_CHAIN) {
         })
     })
     })
-}
+
 
 
 async function foregroundCisco() {

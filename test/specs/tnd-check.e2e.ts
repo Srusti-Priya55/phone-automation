@@ -161,7 +161,6 @@ async function openAppFromDrawer(appName: string, pageLimit = 8): Promise<boolea
 }
 
 /* ---------------- the test ---------------- */
-if (!process.env.E2E_CHAIN) {
 describe('Push and Register TND NVM Profile', () => {
   const PROFILE_LOCAL  = path.resolve(__dirname, '../../apps/nap_json1.txt')
   const PROFILE_REMOTE = '/sdcard/nap_json1.txt'
@@ -177,7 +176,7 @@ describe('Push and Register TND NVM Profile', () => {
     await runPushAndRegister()
   })
 })
-}
+
 
 /* ------- Reusable runner (added) ------- */
 export async function runPushAndRegister() {
