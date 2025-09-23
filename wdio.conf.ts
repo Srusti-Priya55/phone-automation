@@ -4,6 +4,7 @@ import allure from '@wdio/allure-reporter'
 import { attachScreenshot } from './test/utils/report'
 import { dumpNvmLogs } from './test/utils/logcat'
 import path from 'node:path'
+
 const MOCHA_RETRIES = parseInt(process.env.MOCHA_RETRIES || '0', 10)
 const SPEC_RETRIES  = parseInt(process.env.SPEC_RETRIES  || '0', 10)
 
@@ -104,17 +105,28 @@ export const config: WebdriverIO.Config = {
   ],
 
 beforeTest: async (test) => {
-  const allure = require('@wdio/allure-reporter').default
-  const flow = process.env.CURRENT_FLOW || 'Adhoc'
+    // Allure reporter (CommonJS import keeps it working in TS/JS)
+    const allure = require('@wdio/allure-reporter').default;
 
-  // FLAT grouping: put everything directly under the flow name
-  allure.addLabel('suite', flow)
+    // Flow name set by the batch file (Aggregation Check / TND Check / Negatives / etc.)
+    const flow = process.env.CURRENT_FLOW || 'Adhoc';
 
-  // Make the test unique per flow so Allure won't merge Aggregation/TND copies
-  // Build a stable "full title"
-  const full = [test.parent || '', test.title || ''].filter(Boolean).join(' › ')
-  allure.addLabel('testCaseId', `${flow}::${full}`)
-},
+    // 1) Flat grouping: everything directly under the FLOW
+    allure.addLabel('suite', flow);
+
+    // 2) Make each test unique per FLOW using the spec file name
+    //    This prevents Allure from merging Aggregation + TND copies that have same titles.
+    const fileBase =
+      (test.file ? path.basename(test.file, path.extname(test.file)) : '') || '';
+    // e.g. "install-adb.e2e", "add-asa-and-connect.e2e", etc.
+    const uniqueId = `${flow}::${fileBase}`;
+
+    // Allure uses testCaseId as the key for merging – make it flow+file so they never collide
+    allure.addLabel('testCaseId', uniqueId);
+  },
+
+  // keep your afterTest as you have it
+
 
   afterTest: async (test, _context, { passed }) => {
     if (!passed) await attachScreenshot(`Failed - ${test.title}`)
