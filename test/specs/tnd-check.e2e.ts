@@ -1,14 +1,12 @@
-// test/specs/push-and-register.e2e.ts
+// test/specs/tnd-check.e2e.ts
 import { $, $$, driver } from '@wdio/globals'
 import allure from '@wdio/allure-reporter'
-import { Status } from 'allure-js-commons'
 import path from 'node:path'
 import { exec as _exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import { step } from '../utils/report'
+
 import { clearRecents, forceStopKnoxIfConfigured, ensureKnoxAtRoot } from '../utils/app-reset'
-
-
 
 const exec = promisify(_exec)
 
@@ -44,6 +42,53 @@ async function waitForAnyText(regexes: RegExp[], timeoutMs: number): Promise<boo
   }
   return false
 }
+async function waitForRegisterResultZero(timeoutMs = 10000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+
+  // Accept multiple spellings / spacings / separators
+  const patterns: RegExp[] = [
+    /Registration.*result\s*[:=]\s*0/i, 
+    /\bresult\s*[:=]\s*0\b/i              
+  ]
+
+  // Little helper
+  const textMatchesAny = (txt: string) => patterns.some(rx => rx.test(txt))
+
+  while (Date.now() < deadline) {
+    // 1) Native Toast (sometimes available)
+    try {
+      const toast = await $('//android.widget.Toast')
+      if (await toast.isDisplayed()) {
+        const t = (await toast.getText()).trim()
+        if (textMatchesAny(t)) return true
+      }
+    } catch { /* toast not present → ignore */ }
+
+    // 2) Visible text nodes that look like snackbars/labels
+    try {
+      // common snackbar content class ends in TextView as well; check both
+      const maybeTexts = await $$(
+        '//android.widget.TextView | //android.view.View[contains(@content-desc,"result")]'
+      )
+      for (const el of maybeTexts) {
+        if (await el.isDisplayed()) {
+          const t = (await el.getText()).trim()
+          if (t && textMatchesAny(t)) return true
+        }
+      }
+    } catch { /* ignore and continue */ }
+
+    // 3) Page-source sweep (catches transient custom views)
+    try {
+      const xml = await driver.getPageSource()
+      if (textMatchesAny(xml)) return true
+    } catch { /* ignore */ }
+
+    await driver.pause(120) // tight polling to catch short-lived banners
+  }
+  return false
+}
+
 
 async function tapIfVisibleText(regex: RegExp, timeout = 3000): Promise<boolean> {
   const end = Date.now() + timeout
@@ -63,7 +108,7 @@ async function tapIfVisibleText(regex: RegExp, timeout = 3000): Promise<boolean>
   return false
 }
 
-/** Open an app from Samsung app drawer by label (swipe up → swipe left pages → tap label). */
+/** Open an app from Samsung app drawer by label. */
 async function openAppFromDrawer(appName: string, pageLimit = 8): Promise<boolean> {
   await driver.execute('mobile: pressKey', { keycode: 3 }) // HOME
   await sleep(600)
@@ -115,100 +160,69 @@ async function openAppFromDrawer(appName: string, pageLimit = 8): Promise<boolea
   return false
 }
 
-/* ----------- TND log helpers (added) ----------- */
-
-/** Get only TND-related lines from nvmagent logcat output. */
-async function readTndLogs(): Promise<string> {
-  const grepCmd = process.platform === 'win32'
-    ? `adb logcat -d | findstr /i nvmagent`
-    : `adb logcat -d | grep -i nvmagent || true`
-  const { stdout } = await runCmd(grepCmd).catch(() => ({ stdout: '' }))
-
-  const lines = (stdout || '').split(/\r?\n/)
-
-  // Keep the most relevant TND events/keywords
-  const wanted = lines.filter(l =>
-    /TrustedNetworkDetection/i.test(l) ||              // component name
-    /pollTrustedServer/i.test(l) ||
-    /authenticateTNDServer/i.test(l) ||
-    /Trusted Server/i.test(l) ||
-    /certificate/i.test(l) ||
-    /TND/i.test(l) // generic safety net
-  )
-
-  return wanted.join('\n') || '(no TND-related lines found)'
-}
-
-async function wifi(state: 'enable'|'disable') {
-  await runCmd(`adb shell svc wifi ${state}`)
-}
-
 /* ---------------- the test ---------------- */
-
-describe('TND Check- Push and Register NVM Profile', () => {
-  const PROFILE_LOCAL  = path.resolve(__dirname, '../../apps/nap_json3.txt')
-  const PROFILE_REMOTE = '/sdcard/nap_json3.txt'
+if (!process.env.E2E_CHAIN) {
+describe('Push and Register TND NVM Profile', () => {
+  const PROFILE_LOCAL  = path.resolve(__dirname, '../../apps/nap_json1.txt')
+  const PROFILE_REMOTE = '/sdcard/nap_json1.txt'
   const APP_LABEL      = 'Knox SDK Test Tool'
 
   before(() => {
     allure.addFeature('Profile Management')
-    allure.addStory('Push + Register NVM profile + TND log check via Wi-Fi toggle')
+    allure.addStory('Push + Register NVM profile')
     allure.addSeverity('normal')
   })
 
-  it('pushes profile, opens Knox SDK tool, selects it, registers, toggles Wi-Fi and captures TND logs', async () => {
-    await clearRecents()
-    await forceStopKnoxIfConfigured()
-    await step('Push JSON profile to device', async () => {
-      await adbPush(PROFILE_LOCAL, PROFILE_REMOTE)
-    })
-
-    await step('Launch Knox SDK Test Tool', async () => {
-      const opened = await openAppFromDrawer(APP_LABEL, 10)
-      if (!opened) throw new Error('Could not launch Knox SDK Test Tool from drawer')
-    })
-
-    await step('Navigate to Network Analytics', async () => {
-      await tapIfVisibleText(/Knox Policies List/i, 4000)
-      if (!(await tapIfVisibleText(/Network Analytics/i, 5000))) {
-        await tapIfVisibleText(/Knox Tests/i, 2000)
-        await tapIfVisibleText(/Network Analytics/i, 5000)
-      }
-    })
-
-    await step('Select pushed profile file', async () => {
-      await tapIfVisibleText(/^Select JSON file location$/i, 4000)
-      if (!(await tapIfVisibleText(/\/sdcard\/nap_json3\.txt/i, 5000))) {
-        throw new Error('Profile file not selectable under /sdcard/')
-      }
-    })
-
-    await step('Register client', async () => {
-      if (!(await tapIfVisibleText(/^REGISTER CLIENT$/i, 6000))) {
-        throw new Error('REGISTER CLIENT button not found or not clickable')
-      }
-      await sleep(800)
-    })
-
-    // --------- New: Wi-Fi toggling and TND log capture ---------
-
-    await step('Clear logcat before TND capture', async () => {
-      await runCmd(`adb logcat -c`)
-    })
-
-    await step('Turn Wi-Fi OFF and capture TND logs', async () => {
-      await wifi('disable')
-      await sleep(3000)
-      const txt = await readTndLogs()
-      allure.addAttachment('TND logs after Wi-Fi OFF', txt, 'text/plain')
-      await runCmd(`adb logcat -c`)
-    })
-
-    await step('Turn Wi-Fi ON and capture TND logs', async () => {
-      await wifi('enable')
-      await sleep(5000)
-      const txt = await readTndLogs()
-      allure.addAttachment('TND logs after Wi-Fi ON', txt, 'text/plain')
-    })
+  it('TND -CHECK pushes profile, opens Knox SDK tool, selects it, and registers', async () => {
+    await runPushAndRegister()
   })
 })
+}
+
+/* ------- Reusable runner (added) ------- */
+export async function runPushAndRegister() {
+  const PROFILE_LOCAL  = path.resolve(__dirname, '../../apps/nap_json3.txt')
+  const PROFILE_REMOTE = '/sdcard/nap_json3.txt'
+  const APP_LABEL      = 'Knox SDK Test Tool'
+
+  await clearRecents()
+  await forceStopKnoxIfConfigured()
+  await step('Push JSON profile to device', async () => {
+    await adbPush(PROFILE_LOCAL, PROFILE_REMOTE)
+  })
+
+  await step('Launch Knox SDK Test Tool', async () => {
+    const opened = await openAppFromDrawer(APP_LABEL, 10)
+    if (!opened) throw new Error('Could not launch Knox SDK Test Tool from drawer')
+  })
+
+  await step('Navigate to Network Analytics', async () => {
+    await tapIfVisibleText(/Knox Policies List/i, 4000)
+    if (!(await tapIfVisibleText(/Network Analytics/i, 5000))) {
+      await tapIfVisibleText(/Knox Tests/i, 2000)
+      await tapIfVisibleText(/Network Analytics/i, 5000)
+    }
+  })
+
+  await step('Select pushed profile file', async () => {
+    await tapIfVisibleText(/^Select JSON file location$/i, 4000)
+    if (!(await tapIfVisibleText(/\/sdcard\/nap_json3\.txt/i, 5000))) {
+      throw new Error('Profile file not selectable under /sdcard/')
+    }
+  })
+
+  await step('Register client', async () => {
+    if (!(await tapIfVisibleText(/^REGISTER CLIENT$/i, 6000))) {
+      throw new Error('REGISTER CLIENT button not found or not clickable')
+    }
+    await sleep(500)
+  })
+
+  await step('Validate "Registration result = 0"', async () => {
+    const ok = await waitForRegisterResultZero(10000)
+    if (!ok) {
+      await takeAndAttachScreenshot('Register result not found')
+      throw new Error('Did not observe success message (…result = 0) within 10s')
+    }
+  })
+}
