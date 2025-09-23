@@ -104,25 +104,27 @@ export const config: WebdriverIO.Config = {
   ],
 
 beforeTest: async (test) => {
-  const allure = require('@wdio/allure-reporter').default
-  const flow = process.env.CURRENT_FLOW || 'Adhoc'
+  // Allure instance
+  const allure = require('@wdio/allure-reporter').default;
 
-  // 1) Group everything under the selected flow (Aggregation / TND / Negatives)
-  allure.addLabel('parentSuite', flow)
+  // Flow name comes from the batch file
+  const flow = process.env.CURRENT_FLOW || 'Adhoc';
 
-  // 2) Show ONE row per spec file (not per `it()`).
-  //    Use the filename (without extension) as the suite name.
-  const fileName =
-    (test.file || '')
-      .split(/[\\/]/)        // handle Windows + POSIX paths
-      .pop()                 // just the file
-      ?.replace(/\.(ts|js)$/, '')   // drop extension
-    || test.parent           // fallback
+  // Top level in Allure = the flow (Aggregation / TND / Negatives)
+  allure.addLabel('parentSuite', flow);
 
-  allure.addLabel('suite', fileName)
+  // Second level in Allure = the spec file name (one box per file)
+  // -> keeps the tree flat and gives you 7 per flow if you have 7 files
+  const file =
+    (test as any).file?.split(/[\\/]/).pop()?.replace(/\.[tj]s$/, '') ||
+    test.parent ||
+    'spec';
+  allure.addLabel('suite', file);
 
-  // IMPORTANT: do NOT add testCaseId or anything using test.title here,
-  // or Allure will create extra rows.
+  // Make the test unique per flow so Allure won’t merge the same step
+  // name across Aggregation/TND
+  const id = `${flow}::${file}::${test.title}`;
+  allure.addLabel('testCaseId', id);
 },
 
   afterTest: async (test, _context, { passed }) => {
