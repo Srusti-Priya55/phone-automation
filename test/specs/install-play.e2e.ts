@@ -134,7 +134,7 @@ async function handleFirstRunPopups(maxPasses = 5) {
 }
 
 
-  describe(`${FLOW} Install via Play Store`, () => {
+  describe(`${FLOW} - Install via Play Store`, () => {
     before(() => labelSection('Install via Play Store'))
     it('searches, installs, opens app, accepts OK/Allow', async () => {
       await runInstallPlay()

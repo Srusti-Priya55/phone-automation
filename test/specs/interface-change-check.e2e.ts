@@ -78,7 +78,7 @@ async function readInterfaceChangeLogs(): Promise<string> {
 
 /* ---------- the test ---------- */
 
-  describe(`${FLOW} Interface Change Check`, () => {
+  describe(`${FLOW} - Interface Change Check`, () => {
     before(() => labelSection('Interface Change Check'))
 
     it('disables and re-enables Wi-Fi, then verifies InterfaceChange logs', async () => {

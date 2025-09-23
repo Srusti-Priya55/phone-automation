@@ -167,7 +167,7 @@ async function openAppFromDrawer(appName: string, pageLimit = 8): Promise<boolea
 
 /* ---------------- the test ---------------- */
 
-describe(`${FLOW} Invalid Profile push and register`, () => {
+describe(`${FLOW} - Invalid Profile push and register`, () => {
   const PROFILE_LOCAL  = path.resolve(__dirname, '../../apps/nap_json4.txt')
   const PROFILE_REMOTE = '/sdcard/nap_json4.txt'
   const APP_LABEL      = 'Knox SDK Test Tool'

@@ -249,7 +249,7 @@ export async function runUnregisterProfile() {
 
 /* ---------------- the test (with Jenkins-friendly tags) ---------------- */
 
-describe(`${FLOW} Unregister NVM Profile`, () => {
+describe(`${FLOW} - Unregister NVM Profile`, () => {
   before(() => labelSection('Unregister NVM Profile'))
 
   it('opens SDK → Network Analytics → selects 2nd dropdown → first profile → UNREGISTER → sees result=0', async () => {

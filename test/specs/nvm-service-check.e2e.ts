@@ -159,7 +159,7 @@ export async function runCheckNvmService() {
 
 /* ---------- The Test (kept runnable by itself) ---------- */
 
-  describe(`${FLOW} Verify Cisco Secure Client [NVM] service is running`, () => {
+  describe(`${FLOW} - Verify Cisco Secure Client [NVM] service is running`, () => {
     before(() => labelSection('NVM Service Check'))
     it('navigates to Running Services and checks Cisco Secure Client', async () => {
       await runCheckNvmService()

@@ -113,7 +113,7 @@ async function handleFirstRunPopups(maxPasses = 5): Promise<boolean> {
 
 /** Runnable test wrapper (so this file executes by itself) */
 
-describe(`${FLOW} Install via ADB`, () => {
+describe(`${FLOW} - Install via ADB`, () => {
   before(() => labelSection('Install via ADB'))
     it('installs APK if missing, launches app, and handles popups', async () => {
       await runInstallAdb()

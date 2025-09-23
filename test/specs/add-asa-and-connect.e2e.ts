@@ -38,7 +38,7 @@ async function captureNvmLogs() {
   const { stdout } = await exec(cmd, { maxBuffer: 20 * 1024 * 1024 })
   allure.addAttachment('NVM Agent Logs', stdout, 'text/plain')
 }
-    describe(`${FLOW} Cisco Secure Client - add ASA, then connect via username and password`, () => {
+    describe(`${FLOW} - Cisco Secure Client - add ASA, then connect via username and password`, () => {
       before(() => labelSection('Cisco Secure Client - add ASA, connect'))
 
     })

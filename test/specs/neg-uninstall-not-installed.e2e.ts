@@ -39,7 +39,7 @@ async function run(cmd: string) {
  * Tags in the suite title let you filter from Jenkins:
  *   @sanity @negative @adb @uninstall
  */
-describe(`${FLOW} Uninstall via ADB when app is NOT installed`, () => {
+describe(`${FLOW} - Uninstall via ADB when app is NOT installed`, () => {
   before(() => labelSection('Negative- UNinstall when not installed'))
 
   it('fails to uninstall and reports a meaningful error', async () => {
