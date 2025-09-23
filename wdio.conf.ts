@@ -103,25 +103,11 @@ export const config: WebdriverIO.Config = {
     }]
   ],
 
-beforeSuite: (suite) => {
-  // Flow name comes from Jenkins batch (CURRENT_FLOW)
+beforeTest: async (test) => {
   const flow = process.env.CURRENT_FLOW || 'Adhoc';
-
-  // Derive a readable relative file path for subSuite (works Windows/Linux)
-  const relFile = (suite.file || '')
-    .replace(process.cwd() + path.sep, '')
-    .replace(/\\/g, '/'); // normalize for Windows
-
-  // Build a clean Allure hierarchy:
-  // parentSuite: Flow (Aggregation Check, TND Check, Install via ADB, etc.)
-  // suite:       Mocha `describe` title inside the spec
-  // subSuite:    the spec file path (keeps same describe names from different files separate)
   allure.addLabel('parentSuite', flow);
-  allure.addLabel('suite', suite.title || 'Untitled Suite');
-  if (relFile) allure.addLabel('subSuite', relFile);
+  allure.addLabel('subSuite', test.parent);
 },
-
-
 
   afterTest: async (test, _context, { passed }) => {
     if (!passed) await attachScreenshot(`Failed - ${test.title}`)
