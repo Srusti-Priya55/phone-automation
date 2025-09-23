@@ -1,5 +1,14 @@
-// Adds a unique suffix to every "describe" title so Allure treats
-// the same spec executed in different flows as different tests.
-export const FLOW_SUFFIX = process.env.CURRENT_FLOW
-  ? ` — ${process.env.CURRENT_FLOW}`   // e.g. " — Aggregation Check"
-  : '';
+// test/utils/flow.ts
+import allure from '@wdio/allure-reporter'
+
+/**
+ * Call this at the top of each spec's `before()` to shape the Allure tree:
+ *   parentSuite = CURRENT_FLOW (Aggregation / TND / Negatives)
+ *   suite       = Section name (Install via ADB, Add ASA, ...)
+ * Do NOT set subSuite anywhere to avoid nested “folder inside folder”.
+ */
+export function labelSection(sectionName: string) {
+  const flow = process.env.CURRENT_FLOW || 'Adhoc'
+  allure.addLabel('parentSuite', flow)
+  allure.addLabel('suite', sectionName)
+}

@@ -104,9 +104,14 @@ export const config: WebdriverIO.Config = {
   ],
 
 beforeTest: async (test) => {
-  const flow = process.env.CURRENT_FLOW || 'Adhoc'
-  require('@wdio/allure-reporter').default.addLabel('parentSuite', flow)
-  require('@wdio/allure-reporter').default.addLabel('subSuite', test.parent)
+  const flow = process.env.CURRENT_FLOW || 'Adhoc';
+  // Group everything for this WDIO run under the flow in Allure
+  require('@wdio/allure-reporter').default.addLabel('parentSuite', flow);
+
+  // (optional) make the file/describe show as a subsuite row
+  if (test?.parent) {
+    require('@wdio/allure-reporter').default.addLabel('subSuite', test.parent);
+  }
 },
 
   afterTest: async (test, _context, { passed }) => {

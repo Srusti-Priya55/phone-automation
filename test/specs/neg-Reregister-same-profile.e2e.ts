@@ -6,7 +6,7 @@ import { exec as _exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import { step } from '../utils/report'
 import { clearRecents, forceStopKnoxIfConfigured } from '../utils/app-reset'
-import { FLOW_SUFFIX } from '../utils/flow';
+import { labelSection } from '../utils/flow'
 
 const exec = promisify(_exec)
 const sleep = (ms: number) => new Promise(res => setTimeout(res, ms))
@@ -143,7 +143,8 @@ async function chooseFirstRealProfileOption() {
 }
 
 /* ---------- the test ---------- */
-describe('Re-register same NVM profile'+ FLOW_SUFFIX, () => {
+describe('Negative flow: Register (0) → Re-register (-6) → Unregister (0)', () => {
+  before(() => labelSection('Negative -Re-register same profile'))
   const PROFILE_LOCAL  = path.resolve(__dirname, '../../apps/nap_json1.txt')
   const PROFILE_REMOTE = '/sdcard/nap_json1.txt'
   const APP_LABEL      = 'Knox SDK Test Tool'
@@ -178,6 +179,7 @@ describe('Re-register same NVM profile'+ FLOW_SUFFIX, () => {
       if (!(await waitForResult(-6, 10000))) throw new Error('Expected result=-6 not observed')
     })
 
+    // --- Unregister via 2nd dropdown ---
     await step('Unregister original profile', async () => {
       const spinner = await findUnregisterDropdown()
       await spinner.click()

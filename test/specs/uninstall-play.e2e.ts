@@ -3,8 +3,7 @@ import { driver } from '@wdio/globals'
 import { feature, story, severity, step } from '../utils/report'
 import allure from '@wdio/allure-reporter'
 import { expect } from 'chai'
-import { FLOW_SUFFIX } from '../utils/flow';
-
+import { labelSection } from '../utils/flow'
 /** ---- Constants ---- */
 const PLAY_PKG = 'com.android.vending'
 const APP_PKG  = 'com.cisco.anyconnect.vpn.android.avf'
@@ -78,12 +77,8 @@ export async function runUninstallPlay() {
 
 /* ---------------- the test ---------------- */
 
-describe('Uninstall Cisco Secure Client via Play Store'+ FLOW_SUFFIX, () => {
-  before(() => {
-    feature('Uninstallation')
-    story('Uninstall via Play Store')
-    severity('normal')
-  })
+describe('Uninstall Cisco Secure Client via Play Store', () => {
+  before(() => labelSection('Uninstall via Play Store'))
 
   it('navigates to Play Store, clicks Uninstall, and verifies removal', async () => {
     await runUninstallPlay()

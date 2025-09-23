@@ -2,7 +2,7 @@
 import { driver, $ } from '@wdio/globals'
 import allure from '@wdio/allure-reporter'
 import { step } from '../utils/report'
-import { FLOW_SUFFIX } from '../utils/flow';
+import { labelSection } from '../utils/flow'
 
 const SETTINGS_PKG = 'com.android.settings'
 const SERVICE_NAME = 'Cisco Secure Client'
@@ -159,7 +159,8 @@ export async function runCheckNvmService() {
 
 /* ---------- The Test (kept runnable by itself) ---------- */
 
-  describe('Verify Cisco Secure Client [NVM] service is running'+ FLOW_SUFFIX, () => {
+  describe('Verify Cisco Secure Client [NVM] service is running', () => {
+    before(() => labelSection('NVM Service Check'))
     it('navigates to Running Services and checks Cisco Secure Client', async () => {
       await runCheckNvmService()
     })

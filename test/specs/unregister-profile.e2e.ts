@@ -4,7 +4,7 @@ import allure from '@wdio/allure-reporter'
 import { Status } from 'allure-js-commons'
 import { feature, story, severity } from '../utils/report'
 import { step } from '../utils/report'
-import { FLOW_SUFFIX } from '../utils/flow';
+import { labelSection } from '../utils/flow'
 import { clearRecents, forceStopKnoxIfConfigured, ensureKnoxAtRoot } from '../utils/app-reset'
 
 /* ---------------- shared helpers (unchanged style) ---------------- */
@@ -249,12 +249,8 @@ export async function runUnregisterProfile() {
 
 /* ---------------- the test (with Jenkins-friendly tags) ---------------- */
 
-describe('Unregister NVM Profile)'+ FLOW_SUFFIX, () => {
-  before(() => {
-    feature('NVM')
-    story('Unregister profile using 2nd dropdown below "GET ALL PROFILES"')
-    severity('normal')
-  })
+describe('Unregister NVM Profile)', () => {
+  before(() => labelSection('Unregister NVM Profile'))
 
   it('opens SDK → Network Analytics → selects 2nd dropdown → first profile → UNREGISTER → sees result=0', async () => {
     await runUnregisterProfile()

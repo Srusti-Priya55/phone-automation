@@ -6,8 +6,7 @@ import path from 'node:path'
 import { exec as _exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import { step } from '../utils/report'
-import { FLOW_SUFFIX } from '../utils/flow';
-
+import { labelSection } from '../utils/flow'
 import { clearRecents, forceStopKnoxIfConfigured, ensureKnoxAtRoot } from '../utils/app-reset'
 
 const exec = promisify(_exec)
@@ -167,16 +166,11 @@ async function openAppFromDrawer(appName: string, pageLimit = 8): Promise<boolea
 
 /* ---------------- the test ---------------- */
 
-describe('Invalid Profile push and register'+ FLOW_SUFFIX, () => {
+describe('Invalid Profile push and register', () => {
   const PROFILE_LOCAL  = path.resolve(__dirname, '../../apps/nap_json4.txt')
   const PROFILE_REMOTE = '/sdcard/nap_json4.txt'
   const APP_LABEL      = 'Knox SDK Test Tool'
-
-  before(() => {
-    allure.addFeature('Profile Management')
-    allure.addStory('Push + Register NVM profile')
-    allure.addSeverity('normal')
-  })
+  before(() => labelSection('Negative - Invalid profile push/register'))
 
   it('pushes profile, opens Knox SDK tool, selects it, and registers', async () => {
 
