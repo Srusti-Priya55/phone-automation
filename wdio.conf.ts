@@ -105,8 +105,13 @@ export const config: WebdriverIO.Config = {
 
 beforeTest: async (test) => {
   const flow = process.env.CURRENT_FLOW || 'Adhoc';
-  require('@wdio/allure-reporter').default.addLabel('parentSuite',flow);
+  // Top-level folder per flow (Aggregation Check, TND Check, etc.)
+  allure.addLabel('parentSuite', flow);
 
+  // Optional: keep file/describe as the next level
+  allure.addLabel('suite', test.parent);
+
+  // Do NOT add 'subSuite' with test.title – that causes the extra nesting you saw.
 },
 
   afterTest: async (test, _context, { passed }) => {
