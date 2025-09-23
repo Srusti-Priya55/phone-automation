@@ -104,14 +104,16 @@ export const config: WebdriverIO.Config = {
   ],
 
 beforeTest: async (test) => {
-  const flow = process.env.CURRENT_FLOW || 'Adhoc';
-  // Group everything for this WDIO run under the flow in Allure
-  require('@wdio/allure-reporter').default.addLabel('parentSuite', flow);
+  const allure = require('@wdio/allure-reporter').default
+  const flow = process.env.CURRENT_FLOW || 'Adhoc'
 
-  // (optional) make the file/describe show as a subsuite row
-  if (test?.parent) {
-    require('@wdio/allure-reporter').default.addLabel('subSuite', test.parent);
-  }
+  // FLAT grouping: put everything directly under the flow name
+  allure.addLabel('suite', flow)
+
+  // Make the test unique per flow so Allure won't merge Aggregation/TND copies
+  // Build a stable "full title"
+  const full = [test.parent || '', test.title || ''].filter(Boolean).join(' › ')
+  allure.addLabel('testCaseId', `${flow}::${full}`)
 },
 
   afterTest: async (test, _context, { passed }) => {
