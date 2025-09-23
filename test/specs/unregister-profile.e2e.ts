@@ -4,7 +4,6 @@ import allure from '@wdio/allure-reporter'
 import { Status } from 'allure-js-commons'
 import { feature, story, severity } from '../utils/report'
 import { step } from '../utils/report'
-import { navigateHome } from '../utils/nav'
 
 import { clearRecents, forceStopKnoxIfConfigured, ensureKnoxAtRoot } from '../utils/app-reset'
 
@@ -243,8 +242,8 @@ export async function runUnregisterProfile() {
       await takeAndAttachScreenshot('Unregister result not found')
       throw new Error('Did not observe success message (…result = 0) within 10s')
     }
-    await navigateHome()
-
+    await clearRecents()
+   
   })
 }
 
