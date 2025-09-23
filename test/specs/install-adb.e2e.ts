@@ -110,13 +110,13 @@ async function handleFirstRunPopups(maxPasses = 5): Promise<boolean> {
 }
 
 /** Runnable test wrapper (so this file executes by itself) */
-if (!process.env.E2E_CHAIN) {
+
 describe('Install via ADB', () => {
     it('installs APK if missing, launches app, and handles popups', async () => {
       await runInstallAdb()
     })
   })
-}
+
 
 
 
