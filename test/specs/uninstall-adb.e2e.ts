@@ -4,6 +4,7 @@ import { feature, story, severity, step } from '../utils/report'
 import allure from '@wdio/allure-reporter'
 import { exec as _exec } from 'node:child_process'
 import { promisify } from 'node:util'
+import { FLOW_SUFFIX } from '../utils/flow';
 
 const exec = promisify(_exec)
 
@@ -93,7 +94,7 @@ export async function runUninstallAdb() {
 
 /** ---- Test ---- */
 
-describe('Uninstall Cisco Secure Client via ADB', () => {
+describe('Uninstall Cisco Secure Client via ADB'+ FLOW_SUFFIX, () => {
   before(() => {
     feature('Uninstallation')
     story('Uninstall via ADB')

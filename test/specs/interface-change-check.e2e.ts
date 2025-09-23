@@ -4,6 +4,7 @@ import allure from '@wdio/allure-reporter'
 import { Status } from 'allure-js-commons'
 import { exec as _exec } from 'node:child_process'
 import { promisify } from 'node:util'
+import { FLOW_SUFFIX } from '../utils/flow';
 
 const exec = promisify(_exec)
 const sleep = (ms: number) => new Promise(res => setTimeout(res, ms))
@@ -77,7 +78,7 @@ async function readInterfaceChangeLogs(): Promise<string> {
 
 /* ---------- the test ---------- */
 
-  describe('Interface Change Check', () => {
+  describe('Interface Change Check'+ FLOW_SUFFIX, () => {
     before(() => {
       allure.addFeature('Network')
       allure.addStory('Wi-Fi Toggle + NVM InterfaceChange Logs')

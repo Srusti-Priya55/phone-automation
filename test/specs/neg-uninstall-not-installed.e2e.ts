@@ -5,6 +5,7 @@ import { Status } from 'allure-js-commons'
 import { exec as _exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import { step } from '../utils/report'
+import { FLOW_SUFFIX } from '../utils/flow';
 
 
 const exec = promisify(_exec)
@@ -40,7 +41,7 @@ async function run(cmd: string) {
  * Tags in the suite title let you filter from Jenkins:
  *   @sanity @negative @adb @uninstall
  */
-describe('Uninstall via ADB when app is NOT installed', () => {
+describe('Uninstall via ADB when app is NOT installed'+ FLOW_SUFFIX, () => {
   before(() => {
     allure.addFeature('Uninstallation')
     allure.addStory('ADB uninstall when package is absent')

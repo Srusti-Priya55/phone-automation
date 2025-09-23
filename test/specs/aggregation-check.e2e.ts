@@ -6,6 +6,7 @@ import path from 'node:path'
 import { exec as _exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import { step } from '../utils/report'
+import { FLOW_SUFFIX } from '../utils/flow';
 
 import { clearRecents, forceStopKnoxIfConfigured, ensureKnoxAtRoot } from '../utils/app-reset'
 
@@ -118,7 +119,7 @@ async function openAppFromDrawer(appName: string, pageLimit = 8): Promise<boolea
 
 /* ---------------- the test ---------------- */
 
-describe('Aggregation Check- Push and Register NVM Profile', () => {
+describe('Aggregation Check- Push and Register NVM Profile' + FLOW_SUFFIX, () => {
   const PROFILE_LOCAL  = path.resolve(__dirname, '../../apps/nap_json2.txt')
   const PROFILE_REMOTE = '/sdcard/nap_json2.txt'
   const APP_LABEL      = 'Knox SDK Test Tool'
