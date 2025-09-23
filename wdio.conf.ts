@@ -103,9 +103,15 @@ export const config: WebdriverIO.Config = {
     }]
   ],
 
-  beforeTest: async (test) => {
-    allure.addLabel('suite', test.parent)
-  },
+beforeTest: async (test) => {
+  const flow = process.env.CURRENT_FLOW || 'Adhoc';
+  // Make Allure tree: Parent = Flow, SubSuite = file/describe
+  allure.addLabel('parentSuite', flow);
+  allure.addLabel('subSuite', test.parent);
+  // (optional) keep a simple suite label too, but not required:
+  // allure.addLabel('suite', `${flow} :: ${test.parent}`);
+},
+
 
   afterTest: async (test, _context, { passed }) => {
     if (!passed) await attachScreenshot(`Failed - ${test.title}`)
