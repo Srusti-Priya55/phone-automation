@@ -104,27 +104,16 @@ export const config: WebdriverIO.Config = {
   ],
 
 beforeTest: async (test) => {
-  // Allure instance
-  const allure = require('@wdio/allure-reporter').default;
+  const allure = require('@wdio/allure-reporter').default
+  const flow = process.env.CURRENT_FLOW || 'Adhoc'
 
-  // Flow name comes from the batch file
-  const flow = process.env.CURRENT_FLOW || 'Adhoc';
+  // FLAT grouping: put everything directly under the flow name
+  allure.addLabel('suite', flow)
 
-  // Top level in Allure = the flow (Aggregation / TND / Negatives)
-  allure.addLabel('parentSuite', flow);
-
-  // Second level in Allure = the spec file name (one box per file)
-  // -> keeps the tree flat and gives you 7 per flow if you have 7 files
-  const file =
-    (test as any).file?.split(/[\\/]/).pop()?.replace(/\.[tj]s$/, '') ||
-    test.parent ||
-    'spec';
-  allure.addLabel('suite', file);
-
-  // Make the test unique per flow so Allure won’t merge the same step
-  // name across Aggregation/TND
-  const id = `${flow}::${file}::${test.title}`;
-  allure.addLabel('testCaseId', id);
+  // Make the test unique per flow so Allure won't merge Aggregation/TND copies
+  // Build a stable "full title"
+  const full = [test.parent || '', test.title || ''].filter(Boolean).join(' › ')
+  allure.addLabel('testCaseId', `${flow}::${full}`)
 },
 
   afterTest: async (test, _context, { passed }) => {
