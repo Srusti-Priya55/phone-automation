@@ -4,7 +4,6 @@ import allure from '@wdio/allure-reporter'
 import { Status } from 'allure-js-commons'
 import { feature, story, severity } from '../utils/report'
 import { step } from '../utils/report'
-
 import { clearRecents, forceStopKnoxIfConfigured, ensureKnoxAtRoot } from '../utils/app-reset'
 
 /* ---------------- shared helpers (unchanged style) ---------------- */
@@ -15,7 +14,6 @@ async function takeAndAttachScreenshot(name: string) {
   const b64 = await driver.takeScreenshot()
   allure.addAttachment(name, Buffer.from(b64, 'base64'), 'image/png')
 }
-
 
 async function waitForAnyText(regexes: RegExp[], timeoutMs: number): Promise<boolean> {
   const end = Date.now() + timeoutMs
@@ -102,10 +100,8 @@ async function openAppFromDrawer(appName: string, pageLimit = 8): Promise<boolea
 /**
  * Find the **second** "Select profile name" dropdown that sits **below**
  * the "GET ALL PROFILES" row (this is the Unregister section).
- * Uses getLocation/getSize (no getRect typing issues).
  */
 async function findUnregisterDropdown(): Promise<WebdriverIO.Element> {
-  // Anchor row text
   const anchor = await $(`android=new UiSelector().textMatches("(?i)^GET\\s+ALL\\s+PROFILES$")`)
   await anchor.waitForDisplayed({ timeout: 8000 })
 
@@ -113,11 +109,9 @@ async function findUnregisterDropdown(): Promise<WebdriverIO.Element> {
   const aSize = await anchor.getSize()
   const anchorMidY = aLoc.y + Math.floor(aSize.height / 2)
 
-  // All "Select profile name" labels currently visible
   const candidates = await $$(`android=new UiSelector().textMatches("(?i)^Select\\s+profile\\s+name$")`)
   if (!candidates.length) throw new Error('No "Select profile name" dropdowns found')
 
-  // Keep only those **below** the anchor (unregister block) and pick the closest
   const below: { el: WebdriverIO.Element; y: number }[] = []
   for (const el of candidates) {
     const loc = await el.getLocation()
@@ -125,39 +119,30 @@ async function findUnregisterDropdown(): Promise<WebdriverIO.Element> {
     const midY = loc.y + Math.floor(size.height / 2)
     if (midY > anchorMidY) below.push({ el, y: loc.y })
   }
-  if (!below.length) {
-    throw new Error('No "Select profile name" found below "GET ALL PROFILES"')
-  }
+  if (!below.length) throw new Error('No "Select profile name" found below "GET ALL PROFILES"')
   below.sort((a, b) => a.y - b.y)
   return below[0].el
 }
-/** Super-robust wait for “…result = 0” after tapping UNREGISTER CLIENT. */
+
 async function waitForUnregisterResultZero(timeoutMs = 10000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs
-
-  // Accept multiple spellings / spacings / separators
   const patterns: RegExp[] = [
-    /un.?registration.*result\s*[:=]\s*0/i, // Unregistration / Un-registration
-    /unegistration.*result\s*[:=]\s*0/i,    // missing "r"
-    /\bresult\s*[:=]\s*0\b/i                // loose fallback
+    /un.?registration.*result\s*[:=]\s*0/i,
+    /unegistration.*result\s*[:=]\s*0/i,
+    /\bresult\s*[:=]\s*0\b/i
   ]
-
-  // Little helper
   const textMatchesAny = (txt: string) => patterns.some(rx => rx.test(txt))
 
   while (Date.now() < deadline) {
-    // 1) Native Toast (sometimes available)
     try {
       const toast = await $('//android.widget.Toast')
       if (await toast.isDisplayed()) {
         const t = (await toast.getText()).trim()
         if (textMatchesAny(t)) return true
       }
-    } catch { /* toast not present → ignore */ }
+    } catch {}
 
-    // 2) Visible text nodes that look like snackbars/labels
     try {
-      // common snackbar content class ends in TextView as well; check both
       const maybeTexts = await $$(
         '//android.widget.TextView | //android.view.View[contains(@content-desc,"result")]'
       )
@@ -167,21 +152,18 @@ async function waitForUnregisterResultZero(timeoutMs = 10000): Promise<boolean> 
           if (t && textMatchesAny(t)) return true
         }
       }
-    } catch { /* ignore and continue */ }
+    } catch {}
 
-    // 3) Page-source sweep (catches transient custom views)
     try {
       const xml = await driver.getPageSource()
       if (textMatchesAny(xml)) return true
-    } catch { /* ignore */ }
+    } catch {}
 
-    await driver.pause(120) // tight polling to catch short-lived banners
+    await driver.pause(120)
   }
   return false
 }
 
-
-/** Choose the first real profile (skips placeholders like "Select profile name" / "Custom Profile Name"). */
 async function chooseFirstRealProfileOption() {
   const items = await $$(
     `//android.widget.ListView//android.widget.CheckedTextView | //android.widget.ListView//android.widget.TextView`
@@ -198,6 +180,40 @@ async function chooseFirstRealProfileOption() {
     return
   }
   throw new Error('Only placeholder/custom items found in profile list')
+}
+
+/* -------- NEW: nvmagent log capture helpers (with CLEAR + WAIT) -------- */
+import { exec as _exec } from 'node:child_process'
+import { promisify } from 'node:util'
+const exec = promisify(_exec)
+
+async function runCmd(cmd: string) {
+  const full = process.platform === 'win32' ? `cmd /c ${cmd}` : cmd
+  return exec(full, { maxBuffer: 10 * 1024 * 1024 })
+}
+
+async function clearLogcat(): Promise<void> {
+  try { await runCmd('adb logcat -c') } catch {}
+}
+
+/** retry reading fresh nvmagent lines */
+async function readNvmAgentLogsWithRetry(tries = 4, delayMs = 1500): Promise<string> {
+  const isWin = process.platform === 'win32'
+  const cmd = isWin
+    ? `adb logcat -v time -d | findstr /i /c:"nvmagent"`
+    : `adb logcat -v time -d | grep -i "nvmagent" || true`
+
+  let last = ''
+  for (let i = 0; i < tries; i++) {
+    try {
+      const { stdout } = await runCmd(cmd)
+      const out = (stdout || '').trim()
+      if (out) return out
+      last = out
+    } catch { last = '' }
+    await sleep(delayMs)
+  }
+  return last || '(no nvmagent lines found yet)'
 }
 
 /* ---------------- reusable runner ---------------- */
@@ -234,6 +250,15 @@ export async function runUnregisterProfile() {
     await chooseFirstRealProfileOption()
   })
 
+  // ===== UPDATED STEP: wait → CLEAR logs → wait → read fresh nvmagent lines =====
+  await step('Prepare & capture fresh nvmagent logs BEFORE unregister', async () => {
+    await sleep(1500)          // let UI settle
+    await clearLogcat()        // clear previous history
+    await sleep(3000)          // allow new events to appear
+    const txt = await readNvmAgentLogsWithRetry(4, 1500)
+    allure.addAttachment('nvmagent logcat (pre-unregister, fresh)', txt, 'text/plain')
+  })
+
   await step('Tap "UNREGISTER CLIENT"', async () => {
     const btn = await $(`android=new UiSelector().textMatches("(?i)^UNREGISTER\\s+CLIENT$")`)
     await btn.waitForDisplayed({ timeout: 8000 })
@@ -251,15 +276,15 @@ export async function runUnregisterProfile() {
 
 /* ---------------- the test (with Jenkins-friendly tags) ---------------- */
 if (!process.env.E2E_CHAIN) {
-describe('Unregister NVM Profile)', () => {
-  before(() => {
-    feature('NVM')
-    story('Unregister profile using 2nd dropdown below "GET ALL PROFILES"')
-    severity('normal')
-  })
+  describe('Unregister NVM Profile)', () => {
+    before(() => {
+      feature('NVM')
+      story('Unregister profile using 2nd dropdown below "GET ALL PROFILES"')
+      severity('normal')
+    })
 
-  it('opens SDK → Network Analytics → selects 2nd dropdown → first profile → UNREGISTER → sees result=0', async () => {
-    await runUnregisterProfile()
+    it('opens SDK → Network Analytics → selects 2nd dropdown → first profile → UNREGISTER → sees result=0', async () => {
+      await runUnregisterProfile()
+    })
   })
-})
 }
