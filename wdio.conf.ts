@@ -108,12 +108,12 @@ beforeTest: async (test) => {
   const flow = process.env.CURRENT_FLOW || 'Adhoc'
 
   // FLAT grouping: put everything directly under the flow name
-  allure.addLabel('suite', flow)
+  allure.addLabel('parentSuite', flow)
 
   // Make the test unique per flow so Allure won't merge Aggregation/TND copies
   // Build a stable "full title"
-  const full = [test.parent || '', test.title || ''].filter(Boolean).join(' › ')
-  allure.addLabel('testCaseId', `${flow}::${full}`)
+  // const full = [test.parent || '', test.title || ''].filter(Boolean).join(' › ')
+  // allure.addLabel('testCaseId', `${flow}::${full}`)
 },
 
   afterTest: async (test, _context, { passed }) => {
