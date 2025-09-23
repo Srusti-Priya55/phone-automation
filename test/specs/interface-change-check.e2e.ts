@@ -4,7 +4,7 @@ import allure from '@wdio/allure-reporter'
 import { Status } from 'allure-js-commons'
 import { exec as _exec } from 'node:child_process'
 import { promisify } from 'node:util'
-import { labelSection } from '../utils/flow'
+
 
 const exec = promisify(_exec)
 const sleep = (ms: number) => new Promise(res => setTimeout(res, ms))
@@ -78,8 +78,7 @@ async function readInterfaceChangeLogs(): Promise<string> {
 
 /* ---------- the test ---------- */
 
-  describe(`${FLOW} - Interface Change Check`, () => {
-    before(() => labelSection('Interface Change Check'))
+  describe(`Interface Change Check`, () => {
 
     it('disables and re-enables Wi-Fi, then verifies InterfaceChange logs', async () => {
       await step('Clear previous logcat buffer', async () => {

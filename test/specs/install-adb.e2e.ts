@@ -3,7 +3,7 @@ import * as path from 'node:path'
 import * as fs from 'node:fs'
 import { driver, $, $$ } from '@wdio/globals'
 import { step, feature, story, severity } from '../utils/report'
-import { labelSection } from '../utils/flow'
+
 
 const PKG = 'com.cisco.anyconnect.vpn.android.avf'
 const APK = path.resolve(__dirname, '../../apps/anyconnect-android-5.1.7.84-release.apk')
@@ -113,8 +113,7 @@ async function handleFirstRunPopups(maxPasses = 5): Promise<boolean> {
 
 /** Runnable test wrapper (so this file executes by itself) */
 
-describe(`${FLOW} - Install via ADB`, () => {
-  before(() => labelSection('Install via ADB'))
+describe(`Install via ADB`, () => {
     it('installs APK if missing, launches app, and handles popups', async () => {
       await runInstallAdb()
     })

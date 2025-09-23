@@ -2,7 +2,7 @@
 import { driver } from '@wdio/globals'
 import { expect } from 'chai'
 import { step, feature, story, severity } from '../utils/report'
-import { labelSection } from '../utils/flow'
+
 
 const PLAY_PKG = 'com.android.vending'
 const APP_PKG  = 'com.cisco.anyconnect.vpn.android.avf'
@@ -134,8 +134,8 @@ async function handleFirstRunPopups(maxPasses = 5) {
 }
 
 
-  describe(`${FLOW} - Install via Play Store`, () => {
-    before(() => labelSection('Install via Play Store'))
+  describe(`Install via Play Store`, () => {
+
     it('searches, installs, opens app, accepts OK/Allow', async () => {
       await runInstallPlay()
     })

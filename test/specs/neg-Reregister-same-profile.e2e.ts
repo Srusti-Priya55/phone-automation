@@ -6,7 +6,7 @@ import { exec as _exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import { step } from '../utils/report'
 import { clearRecents, forceStopKnoxIfConfigured } from '../utils/app-reset'
-import { labelSection } from '../utils/flow'
+
 
 const exec = promisify(_exec)
 const sleep = (ms: number) => new Promise(res => setTimeout(res, ms))
@@ -143,8 +143,7 @@ async function chooseFirstRealProfileOption() {
 }
 
 /* ---------- the test ---------- */
-describe(`${FLOW} - Negative flow: Register (0) → Re-register (-6) → Unregister (0)`, () => {
-  before(() => labelSection('Negative -Re-register same profile'))
+describe(`Negative flow: Register (0) → Re-register (-6) → Unregister (0)`, () => {
   const PROFILE_LOCAL  = path.resolve(__dirname, '../../apps/nap_json1.txt')
   const PROFILE_REMOTE = '/sdcard/nap_json1.txt'
   const APP_LABEL      = 'Knox SDK Test Tool'

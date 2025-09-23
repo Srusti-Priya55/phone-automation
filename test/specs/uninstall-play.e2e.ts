@@ -3,7 +3,7 @@ import { driver } from '@wdio/globals'
 import { feature, story, severity, step } from '../utils/report'
 import allure from '@wdio/allure-reporter'
 import { expect } from 'chai'
-import { labelSection } from '../utils/flow'
+
 import { clearRecents, forceStopKnoxIfConfigured, ensureKnoxAtRoot } from '../utils/app-reset'
 /** ---- Constants ---- */
 const PLAY_PKG = 'com.android.vending'
@@ -79,8 +79,7 @@ export async function runUninstallPlay() {
 
 /* ---------------- the test ---------------- */
 
-describe(`${FLOW} - Uninstall Cisco Secure Client via Play Store`, () => {
-  before(() => labelSection('Uninstall via Play Store'))
+describe(`Uninstall Cisco Secure Client via Play Store`, () => {
 
   it('navigates to Play Store, clicks Uninstall, and verifies removal', async () => {
     await runUninstallPlay()

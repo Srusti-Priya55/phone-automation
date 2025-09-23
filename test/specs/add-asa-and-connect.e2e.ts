@@ -5,7 +5,7 @@ import { Status } from 'allure-js-commons'
 import { exec as _exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import { step } from '../utils/report'
-import { labelSection } from '../utils/flow'
+
 
 
 import { feature, story, severity } from '../utils/report'
@@ -38,8 +38,8 @@ async function captureNvmLogs() {
   const { stdout } = await exec(cmd, { maxBuffer: 20 * 1024 * 1024 })
   allure.addAttachment('NVM Agent Logs', stdout, 'text/plain')
 }
-    describe(`${FLOW} - Cisco Secure Client - add ASA, then connect via username and password`, () => {
-      before(() => labelSection('Cisco Secure Client - add ASA, connect'))
+    describe(`Cisco Secure Client - add ASA, then connect via username and password`, () => {
+
 
     })
     it('adds ASA, toggles VPN, connects, captures NVM logs', async () => {

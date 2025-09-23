@@ -5,7 +5,7 @@ import path from 'node:path'
 import { exec as _exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import { step } from '../utils/report'
-import { labelSection } from '../utils/flow'
+
 import { clearRecents, forceStopKnoxIfConfigured, ensureKnoxAtRoot } from '../utils/app-reset'
 
 const exec = promisify(_exec)
@@ -161,12 +161,10 @@ async function openAppFromDrawer(appName: string, pageLimit = 8): Promise<boolea
 }
 
 /* ---------------- the test ---------------- */
-describe(`${FLOW} - Push and Register TND NVM Profile`, () => {
+describe(`Push and Register TND NVM Profile`, () => {
   const PROFILE_LOCAL  = path.resolve(__dirname, '../../apps/nap_json3.txt')
   const PROFILE_REMOTE = '/sdcard/nap_json3.txt'
   const APP_LABEL      = 'Knox SDK Test Tool'
-
-  before(() => labelSection('TND Check – Push & Register'))
 
   it('TND -CHECK pushes profile, opens Knox SDK tool, selects it, and registers', async () => {
     await runPushAndRegister()
