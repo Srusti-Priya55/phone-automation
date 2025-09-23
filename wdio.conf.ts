@@ -45,7 +45,7 @@ export const config: WebdriverIO.Config = {
     ],
 
     // 3) Aggregation check (same flow, swap aggregation step)
-    aggregation: [
+    aggregation_check: [
       'test/specs/install-adb.e2e.ts',
       'test/specs/aggregation-check.e2e.ts',
       'test/specs/add-asa-and-connect.e2e.ts',
@@ -56,7 +56,7 @@ export const config: WebdriverIO.Config = {
     ],
 
     // 4) TND check (same flow, swap TND step)
-    tnd: [
+    tnd_check: [
       'test/specs/install-adb.e2e.ts',
       'test/specs/tnd-check.e2e.ts',
       'test/specs/add-asa-and-connect.e2e.ts',
