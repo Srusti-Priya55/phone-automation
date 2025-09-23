@@ -103,14 +103,16 @@ export const config: WebdriverIO.Config = {
     }]
   ],
 
-beforeTest: async (test) => {
+beforeSuite: (suite) => {
+  // Flow name comes from the Jenkins batch, per-suite run
   const flow = process.env.CURRENT_FLOW || 'Adhoc';
-  // Make Allure tree: Parent = Flow, SubSuite = file/describe
-  allure.addLabel('parentSuite', flow);
-  allure.addLabel('subSuite', test.parent);
-  // (optional) keep a simple suite label too, but not required:
-  // allure.addLabel('suite', `${flow} :: ${test.parent}`);
+
+  // Allure tree: Flow → Spec (describe) → Tests
+  allure.addLabel('suite', flow);          // top-level bucket (one per flow)
+  allure.addLabel('subSuite', suite.title) // the spec/describe file name
 },
+// Keep your afterTest as-is (screenshots, logs, etc.)
+
 
 
   afterTest: async (test, _context, { passed }) => {
