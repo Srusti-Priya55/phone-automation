@@ -178,7 +178,6 @@ describe('Re-register same NVM profile'+ FLOW_SUFFIX, () => {
       if (!(await waitForResult(-6, 10000))) throw new Error('Expected result=-6 not observed')
     })
 
-    // --- Unregister via 2nd dropdown ---
     await step('Unregister original profile', async () => {
       const spinner = await findUnregisterDropdown()
       await spinner.click()
