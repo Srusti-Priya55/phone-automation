@@ -103,23 +103,29 @@ export const config: WebdriverIO.Config = {
       addConsoleLogs: true,
     }]
   ],
+
 beforeTest: async (test) => {
-  const allure = require('@wdio/allure-reporter').default
-  const flow = process.env.CURRENT_FLOW || 'Adhoc'
+    // Allure reporter (CommonJS import keeps it working in TS/JS)
+    const allure = require('@wdio/allure-reporter').default;
 
-  // which spec file is running (e.g. install-adb.e2e.ts)
-  const fileBase = (test.file || '')
-    .split(/[\\/]/).pop()!
-    .replace(/\.(test|spec)\.ts$/i, '')
-    .replace(/\.e2e$/i, '')
+    // Flow name set by the batch file (Aggregation Check / TND Check / Negatives / etc.)
+    const flow = process.env.CURRENT_FLOW || 'Adhoc';
 
-  // FLAT tree: Flow → (spec file)
-  allure.addLabel('parentSuite', flow)   // Aggregation Check / TND Check / Negatives
-  allure.addLabel('suite', fileBase)     // install-adb / interface-change-check / ...
+    // 1) Flat grouping: everything directly under the FLOW
+    allure.addLabel('suite', flow);
 
-  // Make a unique id so Allure won't merge Aggregation & TND copies
-  allure.addLabel('testCaseId', `${flow}::${fileBase}`)
-},
+    // 2) Make each test unique per FLOW using the spec file name
+    //    This prevents Allure from merging Aggregation + TND copies that have same titles.
+    const fileBase =
+      (test.file ? path.basename(test.file, path.extname(test.file)) : '') || '';
+    // e.g. "install-adb.e2e", "add-asa-and-connect.e2e", etc.
+    const uniqueId = `${flow}::${fileBase}`;
+
+    // Allure uses testCaseId as the key for merging – make it flow+file so they never collide
+    allure.addLabel('testCaseId', uniqueId);
+  },
+
+  // keep your afterTest as you have it
 
 
   afterTest: async (test, _context, { passed }) => {
