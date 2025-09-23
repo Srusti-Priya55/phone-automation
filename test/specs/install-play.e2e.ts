@@ -7,7 +7,7 @@ import { labelSection } from '../utils/flow'
 const PLAY_PKG = 'com.android.vending'
 const APP_PKG  = 'com.cisco.anyconnect.vpn.android.avf'
 const APP_NAME = 'Cisco Secure Client'
-
+const FLOW = process.env.CURRENT_FLOW || 'Adhoc';
 /** Reusable flow */
 export async function runInstallPlay() {
   feature('Installation')
@@ -134,7 +134,7 @@ async function handleFirstRunPopups(maxPasses = 5) {
 }
 
 
-  describe('Install via Play Store', () => {
+  describe(`${FLOW} Install via Play Store`, () => {
     before(() => labelSection('Install via Play Store'))
     it('searches, installs, opens app, accepts OK/Allow', async () => {
       await runInstallPlay()

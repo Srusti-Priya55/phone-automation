@@ -8,7 +8,7 @@ import { labelSection } from '../utils/flow'
 import { clearRecents, forceStopKnoxIfConfigured, ensureKnoxAtRoot } from '../utils/app-reset'
 
 /* ---------------- shared helpers (unchanged style) ---------------- */
-
+const FLOW = process.env.CURRENT_FLOW || 'Adhoc';
 const sleep = (ms: number) => new Promise(res => setTimeout(res, ms))
 
 async function takeAndAttachScreenshot(name: string) {
@@ -249,7 +249,7 @@ export async function runUnregisterProfile() {
 
 /* ---------------- the test (with Jenkins-friendly tags) ---------------- */
 
-describe('Unregister NVM Profile)', () => {
+describe(`${FLOW} Unregister NVM Profile`, () => {
   before(() => labelSection('Unregister NVM Profile'))
 
   it('opens SDK → Network Analytics → selects 2nd dropdown → first profile → UNREGISTER → sees result=0', async () => {

@@ -8,7 +8,7 @@ import { labelSection } from '../utils/flow'
 const PLAY_PKG = 'com.android.vending'
 const APP_PKG  = 'com.cisco.anyconnect.vpn.android.avf'
 const APP_NAME = 'Cisco Secure Client'
-
+const FLOW = process.env.CURRENT_FLOW || 'Adhoc';
 /* ---------------- reusable runner ---------------- */
 export async function runUninstallPlay() {
   await step('Open Play Store details page for CSC', async () => {
@@ -77,7 +77,7 @@ export async function runUninstallPlay() {
 
 /* ---------------- the test ---------------- */
 
-describe('Uninstall Cisco Secure Client via Play Store', () => {
+describe(`${FLOW} Uninstall Cisco Secure Client via Play Store`, () => {
   before(() => labelSection('Uninstall via Play Store'))
 
   it('navigates to Play Store, clicks Uninstall, and verifies removal', async () => {

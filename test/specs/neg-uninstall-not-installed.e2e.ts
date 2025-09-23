@@ -10,7 +10,7 @@ const exec = promisify(_exec)
 
 /* ---------- constants ---------- */
 const PKG = 'com.cisco.anyconnect.vpn.android.avf'
-
+const FLOW = process.env.CURRENT_FLOW || 'Adhoc';
 /* ---------- tiny helpers ---------- */
 async function takeAndAttachScreenshot(name: string) {
   const b64 = await driver.takeScreenshot()
@@ -39,7 +39,7 @@ async function run(cmd: string) {
  * Tags in the suite title let you filter from Jenkins:
  *   @sanity @negative @adb @uninstall
  */
-describe('Uninstall via ADB when app is NOT installed', () => {
+describe(`${FLOW} Uninstall via ADB when app is NOT installed`, () => {
   before(() => labelSection('Negative- UNinstall when not installed'))
 
   it('fails to uninstall and reports a meaningful error', async () => {

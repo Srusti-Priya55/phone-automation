@@ -13,6 +13,7 @@ const exec = promisify(_exec)
 
 /* ---------------- utilities ---------------- */
 const sleep = (ms: number) => new Promise(res => setTimeout(res, ms))
+const FLOW = process.env.CURRENT_FLOW || 'Adhoc';
 
 async function runCmd(cmd: string) {
   const full = process.platform === 'win32' ? `cmd /c ${cmd}` : cmd
@@ -166,7 +167,7 @@ async function openAppFromDrawer(appName: string, pageLimit = 8): Promise<boolea
 
 /* ---------------- the test ---------------- */
 
-describe('Invalid Profile push and register', () => {
+describe(`${FLOW} Invalid Profile push and register`, () => {
   const PROFILE_LOCAL  = path.resolve(__dirname, '../../apps/nap_json4.txt')
   const PROFILE_REMOTE = '/sdcard/nap_json4.txt'
   const APP_LABEL      = 'Knox SDK Test Tool'
@@ -212,6 +213,7 @@ describe('Invalid Profile push and register', () => {
         await takeAndAttachScreenshot('Register result not found')
         throw new Error('Did not observe success message (…result = -2) within 10s')
     }
+    await clearRecents()
     })
   })
 })

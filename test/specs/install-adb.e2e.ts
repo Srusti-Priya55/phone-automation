@@ -7,6 +7,7 @@ import { labelSection } from '../utils/flow'
 
 const PKG = 'com.cisco.anyconnect.vpn.android.avf'
 const APK = path.resolve(__dirname, '../../apps/anyconnect-android-5.1.7.84-release.apk')
+const FLOW = process.env.CURRENT_FLOW || 'Adhoc';
 
 /** Reusable flow (can be imported by a sanity suite) */
 export async function runInstallAdb() {
@@ -112,7 +113,7 @@ async function handleFirstRunPopups(maxPasses = 5): Promise<boolean> {
 
 /** Runnable test wrapper (so this file executes by itself) */
 
-describe('Install via ADB', () => {
+describe(`${FLOW} Install via ADB`, () => {
   before(() => labelSection('Install via ADB'))
     it('installs APK if missing, launches app, and handles popups', async () => {
       await runInstallAdb()

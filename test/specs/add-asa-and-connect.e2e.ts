@@ -7,8 +7,10 @@ import { promisify } from 'node:util'
 import { step } from '../utils/report'
 import { labelSection } from '../utils/flow'
 
+
 import { feature, story, severity } from '../utils/report'
 const exec = promisify(_exec)
+const FLOW = process.env.CURRENT_FLOW || 'Adhoc';
 
 /** ---------- Constants ---------- */
 const APP_PKG = 'com.cisco.anyconnect.vpn.android.avf'
@@ -36,7 +38,7 @@ async function captureNvmLogs() {
   const { stdout } = await exec(cmd, { maxBuffer: 20 * 1024 * 1024 })
   allure.addAttachment('NVM Agent Logs', stdout, 'text/plain')
 }
-    describe('Cisco Secure Client - add ASA, then connect via username and password', () => {
+    describe(`${FLOW} Cisco Secure Client - add ASA, then connect via username and password`, () => {
       before(() => labelSection('Cisco Secure Client - add ASA, connect'))
 
     })

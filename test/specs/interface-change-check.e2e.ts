@@ -8,7 +8,7 @@ import { labelSection } from '../utils/flow'
 
 const exec = promisify(_exec)
 const sleep = (ms: number) => new Promise(res => setTimeout(res, ms))
-
+const FLOW = process.env.CURRENT_FLOW || 'Adhoc';
 /* ---------- utilities ---------- */
 async function run(cmd: string) {
   const full = process.platform === 'win32' ? `cmd /c ${cmd}` : cmd
@@ -78,7 +78,7 @@ async function readInterfaceChangeLogs(): Promise<string> {
 
 /* ---------- the test ---------- */
 
-  describe('Interface Change Check', () => {
+  describe(`${FLOW} Interface Change Check`, () => {
     before(() => labelSection('Interface Change Check'))
 
     it('disables and re-enables Wi-Fi, then verifies InterfaceChange logs', async () => {

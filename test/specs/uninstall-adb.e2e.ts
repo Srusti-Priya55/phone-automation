@@ -9,7 +9,7 @@ const exec = promisify(_exec)
 
 /** ---- Config ---- */
 const PKG = 'com.cisco.anyconnect.vpn.android.avf'
-
+const FLOW = process.env.CURRENT_FLOW || 'Adhoc';
 /** ---- Small utils ---- */
 const sleep = (ms: number) => new Promise(res => setTimeout(res, ms))
 
@@ -93,7 +93,7 @@ export async function runUninstallAdb() {
 
 /** ---- Test ---- */
 
-describe('Uninstall Cisco Secure Client via ADB', () => {
+describe(`${FLOW}Uninstall Cisco Secure Client via ADB`, () => {
 before(() => labelSection('Uninstall via ADB'))
 
   it('removes the app cleanly and verifies it is gone', async () => {
