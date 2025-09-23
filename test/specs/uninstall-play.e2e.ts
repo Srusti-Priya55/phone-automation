@@ -4,6 +4,7 @@ import { feature, story, severity, step } from '../utils/report'
 import allure from '@wdio/allure-reporter'
 import { expect } from 'chai'
 import { labelSection } from '../utils/flow'
+import { clearRecents, forceStopKnoxIfConfigured, ensureKnoxAtRoot } from '../utils/app-reset'
 /** ---- Constants ---- */
 const PLAY_PKG = 'com.android.vending'
 const APP_PKG  = 'com.cisco.anyconnect.vpn.android.avf'
@@ -66,6 +67,7 @@ export async function runUninstallPlay() {
         break
       }
       await driver.pause(interval)
+      await clearRecents()
     }
 
     expect(seenInstall).to.equal(
