@@ -104,8 +104,9 @@ export const config: WebdriverIO.Config = {
   ],
 
 beforeTest: async (test) => {
-  const flow = process.env.CURRENT_FLOW || 'Adhoc';
-  require('@wdio/allure-reporter').default.addLabel('parentSuite', flow);
+  const flow = process.env.CURRENT_FLOW || 'Adhoc'
+  require('@wdio/allure-reporter').default.addLabel('parentSuite', flow)
+  require('@wdio/allure-reporter').default.addLabel('subSuite', test.parent)
 },
 
   afterTest: async (test, _context, { passed }) => {
