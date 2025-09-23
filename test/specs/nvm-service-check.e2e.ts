@@ -4,10 +4,12 @@ import allure from '@wdio/allure-reporter'
 import { Status } from 'allure-js-commons'
 import { step } from '../utils/report'
 
+// === NEW imports for adb helpers ===
+import { exec as _exec } from 'node:child_process'
+import { promisify } from 'node:util'
 
 const SETTINGS_PKG = 'com.android.settings'
 const SERVICE_NAME = 'Cisco Secure Client'
-
 
 const sleep = (ms: number) => new Promise(res => setTimeout(res, ms))
 
@@ -15,7 +17,6 @@ async function takeAndAttachScreenshot(name: string) {
   const b64 = await driver.takeScreenshot()
   allure.addAttachment(name, Buffer.from(b64, 'base64'), 'image/png')
 }
-
 
 async function tapIfText(regex: RegExp, timeout = 4000): Promise<boolean> {
   try {
@@ -35,8 +36,7 @@ async function scrollTextIntoView(text: string, maxSwipes = 10): Promise<boolean
     await $(`android=new UiScrollable(new UiSelector().scrollable(true)).scrollTextIntoView("${text}")`)
     const el = await $(`android=new UiSelector().text("${text}")`)
     if (await el.isExisting()) return true
-  } catch {
-  }
+  } catch {}
 
   for (let i = 0; i < maxSwipes; i++) {
     const el = await $(`android=new UiSelector().text("${text}")`)
@@ -57,7 +57,6 @@ async function scrollTextIntoView(text: string, maxSwipes = 10): Promise<boolean
   return false
 }
 
-
 async function openDeveloperOptionsDirect(): Promise<void> {
   try {
     // Appium mobile shell (works on Appium 2 / UIA2)
@@ -75,6 +74,29 @@ async function openDeveloperOptionsDirect(): Promise<void> {
     } catch {}
   }
 }
+
+/* ========= NEW: adb helpers for log capture ========= */
+const exec = promisify(_exec)
+
+async function runCmd(cmd: string) {
+  const full = process.platform === 'win32' ? `cmd /c ${cmd}` : cmd
+  return exec(full, { maxBuffer: 10 * 1024 * 1024 })
+}
+
+/** Read only nvmagent lines from logcat (never throws; returns empty string on error). */
+async function readNvmAgentLogs(): Promise<string> {
+  const grepCmd = process.platform === 'win32'
+    ? `adb logcat -d | findstr /i nvmagent`
+    : `adb logcat -d | grep -i nvmagent || true`
+
+  try {
+    const { stdout } = await runCmd(grepCmd)
+    return (stdout || '').trim()
+  } catch {
+    return ''
+  }
+}
+/* ==================================================== */
 
 export async function runCheckNvmService() {
   await step('Open Android Settings', async () => {
@@ -129,6 +151,20 @@ export async function runCheckNvmService() {
     }
     // Success screenshot (explicit request)
     await takeAndAttachScreenshot('Cisco Secure Client - Running Services')
+  })
+
+  // === NEW: capture nvmagent logs now that service is confirmed running ===
+  await step('Capture nvmagent logs (after service check)', async () => {
+    // Clear old logs first so we only capture “fresh” lines
+    await runCmd('adb logcat -c').catch(() => {})
+    await sleep(3000) // give the service a few seconds to emit logs
+
+    const lines = await readNvmAgentLogs()
+    allure.addAttachment(
+      'nvmagent logs (post-service-check)',
+      lines || '(no nvmagent lines found yet)',
+      'text/plain'
+    )
   })
 }
 
