@@ -3,7 +3,7 @@ import { androidRealCaps } from './config/android.real.cap'
 import allure from '@wdio/allure-reporter'
 import { attachScreenshot } from './test/utils/report'
 import { dumpNvmLogs } from './test/utils/logcat'
-
+import path from 'node:path'
 const MOCHA_RETRIES = parseInt(process.env.MOCHA_RETRIES || '0', 10)
 const SPEC_RETRIES  = parseInt(process.env.SPEC_RETRIES  || '0', 10)
 
@@ -104,14 +104,22 @@ export const config: WebdriverIO.Config = {
   ],
 
 beforeSuite: (suite) => {
-  // Flow name comes from the Jenkins batch, per-suite run
+  // Flow name comes from Jenkins batch (CURRENT_FLOW)
   const flow = process.env.CURRENT_FLOW || 'Adhoc';
 
-  // Allure tree: Flow → Spec (describe) → Tests
-  allure.addLabel('suite', flow);          // top-level bucket (one per flow)
-  allure.addLabel('subSuite', suite.title) // the spec/describe file name
+  // Derive a readable relative file path for subSuite (works Windows/Linux)
+  const relFile = (suite.file || '')
+    .replace(process.cwd() + path.sep, '')
+    .replace(/\\/g, '/'); // normalize for Windows
+
+  // Build a clean Allure hierarchy:
+  // parentSuite: Flow (Aggregation Check, TND Check, Install via ADB, etc.)
+  // suite:       Mocha `describe` title inside the spec
+  // subSuite:    the spec file path (keeps same describe names from different files separate)
+  allure.addLabel('parentSuite', flow);
+  allure.addLabel('suite', suite.title || 'Untitled Suite');
+  if (relFile) allure.addLabel('subSuite', relFile);
 },
-// Keep your afterTest as-is (screenshots, logs, etc.)
 
 
 
