@@ -4,7 +4,6 @@ import allure from '@wdio/allure-reporter'
 import { attachScreenshot } from './test/utils/report'
 import { dumpNvmLogs } from './test/utils/logcat'
 import path from 'node:path'
-
 const MOCHA_RETRIES = parseInt(process.env.MOCHA_RETRIES || '0', 10)
 const SPEC_RETRIES  = parseInt(process.env.SPEC_RETRIES  || '0', 10)
 
@@ -105,26 +104,20 @@ export const config: WebdriverIO.Config = {
   ],
 
 beforeTest: async (test) => {
-    // use CommonJS import to keep it happy in TS/JS
-    const allure = require('@wdio/allure-reporter').default;
+    const allure = require('@wdio/allure-reporter').default
+    const flow = process.env.CURRENT_FLOW || 'Adhoc'
 
-    // 1) parent = flow (from the batch file)
-    const flow = process.env.CURRENT_FLOW || 'Adhoc';
-    allure.addLabel('parentSuite', flow);
+    // Group by flow (Aggregation Check, TND Check, etc.)
+    allure.addLabel('suite', flow)
 
-    // 2) suite = the spec's describe title (what you want to see)
-    const section = (test.parent || 'Spec').trim();
-    allure.addLabel('suite', section);
+    // Use describe() + it() titles only (no .e2e filenames)
+    const full = [test.parent || '', test.title || '']
+        .filter(Boolean)
+        .join(' > ')
 
-    // 3) make results unique per flow so Aggregation and TND never merge
-    //    (this was the reason Aggregation showed only one before)
-    allure.addLabel('testCaseId', `${flow}::${section}`);
-  },
-
-  // keep your afterTest as you already had i
-
-  // keep your afterTest as you have it
-
+    // Unique per flow+title, so Aggregation won't collapse
+    allure.addLabel('testCaseId', `${flow}::${full}`)
+},
 
   afterTest: async (test, _context, { passed }) => {
     if (!passed) await attachScreenshot(`Failed - ${test.title}`)
