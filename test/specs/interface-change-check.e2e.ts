@@ -133,4 +133,14 @@ export async function runInterfaceChangeCheck() {
     const txt = await readInterfaceChangeLogs()
     await attachText('InterfaceChange logs after Wi-Fi ON', txt)
   })
+
+  await step('NVM logcat', async () => {
+  const cmd = process.platform === 'win32'
+    ? 'adb logcat -d | findstr /i nvmagent'
+    : 'adb logcat -d | grep -i nvmagent || true'
+
+  const { stdout } = await run(cmd).catch(() => ({ stdout: '' }))
+  await attachText('NVM logcat', stdout || '(no nvmagent lines found)')
+})
+
 }
