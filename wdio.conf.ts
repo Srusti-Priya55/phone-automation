@@ -107,18 +107,17 @@ beforeTest: async (test) => {
     const allure = require('@wdio/allure-reporter').default
     const flow = process.env.CURRENT_FLOW || 'Adhoc'
 
-    // Group by flow (Aggregation Check, TND Check, etc.)
+    // Group by flow
     allure.addLabel('suite', flow)
 
-    // Use describe() + it() titles only (no .e2e filenames)
+    // Use parent + title → ensures each "describe/it" shows separately
     const full = [test.parent || '', test.title || '']
         .filter(Boolean)
-        .join(' > ')
+        .join(' :: ')
 
-    // Unique per flow+title, so Aggregation won't collapse
+    // Add unique testCaseId
     allure.addLabel('testCaseId', `${flow}::${full}`)
 },
-
   afterTest: async (test, _context, { passed }) => {
     if (!passed) await attachScreenshot(`Failed - ${test.title}`)
     if (/\b(NVM|VPN|Wi[- ]?Fi)\b/i.test(test.title) || process.env.NVM_LOGS === '1') {
