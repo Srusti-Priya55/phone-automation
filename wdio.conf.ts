@@ -105,26 +105,23 @@ export const config: WebdriverIO.Config = {
   ],
 
 beforeTest: async (test) => {
-    // CommonJS import keeps reporter happy in TS/JS mixed projects
+    // use CommonJS import to keep it happy in TS/JS
     const allure = require('@wdio/allure-reporter').default;
 
-    // 1) Flow name comes from the batch file
+    // 1) parent = flow (from the batch file)
     const flow = process.env.CURRENT_FLOW || 'Adhoc';
-
-    // 2) parent = Flow (Aggregation / TND / Negatives)
     allure.addLabel('parentSuite', flow);
 
-    // 3) suite = spec filename (so you get 7 items under each flow)
-    const fileBase =
-      (test.file ? path.basename(test.file, path.extname(test.file)) : (test.parent || 'spec'))
-        .trim(); // e.g. 'install-adb', 'add-asa-and-connect', ...
+    // 2) suite = the spec's describe title (what you want to see)
+    const section = (test.parent || 'Spec').trim();
+    allure.addLabel('suite', section);
 
-    allure.addLabel('suite', fileBase);
-
-    // 4) Make testCaseId unique per (flow, file) so Aggregation & TND never merge
-    //    You have one `it` per file, so this maps 1:1 to your 7 files.
-    allure.addLabel('testCaseId', `${flow}::${fileBase}`);
+    // 3) make results unique per flow so Aggregation and TND never merge
+    //    (this was the reason Aggregation showed only one before)
+    allure.addLabel('testCaseId', `${flow}::${section}`);
   },
+
+  // keep your afterTest as you already had i
 
   // keep your afterTest as you have it
 
