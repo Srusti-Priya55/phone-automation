@@ -105,24 +105,25 @@ export const config: WebdriverIO.Config = {
   ],
 
 beforeTest: async (test) => {
-    // Allure reporter (CommonJS import keeps it working in TS/JS)
+    // CommonJS import keeps reporter happy in TS/JS mixed projects
     const allure = require('@wdio/allure-reporter').default;
 
-    // Flow name set by the batch file (Aggregation Check / TND Check / Negatives / etc.)
+    // 1) Flow name comes from the batch file
     const flow = process.env.CURRENT_FLOW || 'Adhoc';
 
-    // 1) Flat grouping: everything directly under the FLOW
-    allure.addLabel('suite', flow);
+    // 2) parent = Flow (Aggregation / TND / Negatives)
+    allure.addLabel('parentSuite', flow);
 
-    // 2) Make each test unique per FLOW using the spec file name
-    //    This prevents Allure from merging Aggregation + TND copies that have same titles.
+    // 3) suite = spec filename (so you get 7 items under each flow)
     const fileBase =
-      (test.file ? path.basename(test.file, path.extname(test.file)) : '') || '';
-    // e.g. "install-adb.e2e", "add-asa-and-connect.e2e", etc.
-    const uniqueId = `${flow}::${fileBase}`;
+      (test.file ? path.basename(test.file, path.extname(test.file)) : (test.parent || 'spec'))
+        .trim(); // e.g. 'install-adb', 'add-asa-and-connect', ...
 
-    // Allure uses testCaseId as the key for merging – make it flow+file so they never collide
-    allure.addLabel('testCaseId', uniqueId);
+    allure.addLabel('suite', fileBase);
+
+    // 4) Make testCaseId unique per (flow, file) so Aggregation & TND never merge
+    //    You have one `it` per file, so this maps 1:1 to your 7 files.
+    allure.addLabel('testCaseId', `${flow}::${fileBase}`);
   },
 
   // keep your afterTest as you have it
