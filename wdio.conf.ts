@@ -3,13 +3,16 @@ import { androidRealCaps } from './config/android.real.cap'
 import allure from '@wdio/allure-reporter'
 import { attachScreenshot } from './test/utils/report'
 import { dumpNvmLogs } from './test/utils/logcat'
+
+// keep these as you had
 const MOCHA_RETRIES = parseInt(process.env.MOCHA_RETRIES || '0', 10)
 const SPEC_RETRIES  = parseInt(process.env.SPEC_RETRIES  || '0', 10)
-const path =require('path');
+
+// use Node's path so we can build a stable per-test id
+const path = require('path')
 
 export const config: WebdriverIO.Config = {
   runner: 'local',
-
   hostname: '127.0.0.1',
   port: 4723,
   path: '/',
@@ -17,12 +20,8 @@ export const config: WebdriverIO.Config = {
   specs: ['./test/specs/**/*.ts'],
   exclude: [],
 
-  /**
-   * SUITES for Jenkins checkboxes
-   * (names are simple and match your manager’s wording)
-   */
+  // ---- Jenkins checkboxes (unchanged) ----
   suites: {
-    // 1) Installation via ADB
     install_adb: [
       'test/specs/install-adb.e2e.ts',
       'test/specs/push-and-register.e2e.ts',
@@ -32,8 +31,6 @@ export const config: WebdriverIO.Config = {
       'test/specs/unregister-profile.e2e.ts',
       'test/specs/uninstall-adb.e2e.ts',
     ],
-
-    // 2) Installation via Play Store
     install_play: [
       'test/specs/install-play.e2e.ts',
       'test/specs/push-and-register.e2e.ts',
@@ -43,8 +40,6 @@ export const config: WebdriverIO.Config = {
       'test/specs/unregister-profile.e2e.ts',
       'test/specs/uninstall-play.e2e.ts',
     ],
-
-    // 3) Aggregation check (same flow, swap aggregation step)
     aggregation_check: [
       'test/specs/install-adb.e2e.ts',
       'test/specs/aggregation-check.e2e.ts',
@@ -54,8 +49,6 @@ export const config: WebdriverIO.Config = {
       'test/specs/unregister-profile.e2e.ts',
       'test/specs/uninstall-adb.e2e.ts',
     ],
-
-    // 4) TND check (same flow, swap TND step)
     tnd_check: [
       'test/specs/install-adb.e2e.ts',
       'test/specs/tnd-check.e2e.ts',
@@ -65,10 +58,8 @@ export const config: WebdriverIO.Config = {
       'test/specs/unregister-profile.e2e.ts',
       'test/specs/uninstall-adb.e2e.ts',
     ],
-
-    // 5) Negatives pack
     negatives: [
-      'test/specs/neg-Reregister-same-profile.e2e.ts',       // note: capital "R" matches your file
+      'test/specs/neg-Reregister-same-profile.e2e.ts',
       'test/specs/neg-invalid-profile-push-register.e2e.ts',
       'test/specs/neg-uninstall-not-installed.e2e.ts',
     ],
@@ -103,21 +94,25 @@ export const config: WebdriverIO.Config = {
     }]
   ],
 
-beforeTest: async (test) => {
+  // ---------- Allure shaping (this is the key part) ----------
+  beforeTest: async (test) => {
+    // CommonJS import keeps @wdio/allure-reporter happy in TS
     const allure = require('@wdio/allure-reporter').default
+
+    // Flow name is injected by your batch file (Aggregation Check / TND Check / Negatives / etc.)
     const flow = process.env.CURRENT_FLOW || 'Adhoc'
 
-    // Flat grouping: top-level by flow
+    // 1) Put every test directly under the FLOW (no nested sections overriding it)
     allure.addLabel('suite', flow)
 
-    // Use file name + title to keep each test unique
+    // 2) Give each test a unique id per FLOW so Allure does not merge copies
+    //    (if a spec runs in both Aggregation and TND, they stay separate)
     const fileBase = test.file ? path.basename(test.file, path.extname(test.file)) : ''
-    const title = test.title || ''
+    const title    = test.title || ''
     const uniqueId = `${flow}::${fileBase}::${title}`
-
-    // Tell Allure this test is unique
     allure.addLabel('testCaseId', uniqueId)
-},
+  },
+
   afterTest: async (test, _context, { passed }) => {
     if (!passed) await attachScreenshot(`Failed - ${test.title}`)
     if (/\b(NVM|VPN|Wi[- ]?Fi)\b/i.test(test.title) || process.env.NVM_LOGS === '1') {
