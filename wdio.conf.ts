@@ -95,23 +95,26 @@ export const config: WebdriverIO.Config = {
   ],
 
   // ---------- Allure shaping (this is the key part) ----------
-  beforeTest: async (test) => {
-    // CommonJS import keeps @wdio/allure-reporter happy in TS
-    const allure = require('@wdio/allure-reporter').default
+beforeTest: async (test) => {
+  const allure = require('@wdio/allure-reporter').default
+  const path = require('path')
 
-    // Flow name is injected by your batch file (Aggregation Check / TND Check / Negatives / etc.)
-    const flow = process.env.CURRENT_FLOW || 'Adhoc'
+  // Flow name set by your batch file (Aggregation Check / TND Check / Negatives / etc.)
+  const flow = process.env.CURRENT_FLOW || 'Adhoc'
 
-    // 1) Put every test directly under the FLOW (no nested sections overriding it)
-    allure.addLabel('suite', flow)
+  // Put everything directly under the flow (flat tree, no nested folders)
+  allure.addLabel('parentSuite', flow)
+  allure.addLabel('suite',       flow)
 
-    // 2) Give each test a unique id per FLOW so Allure does not merge copies
-    //    (if a spec runs in both Aggregation and TND, they stay separate)
-    const fileBase = test.file ? path.basename(test.file, path.extname(test.file)) : ''
-    const title    = test.title || ''
-    const uniqueId = `${flow}::${fileBase}::${title}`
-    allure.addLabel('testCaseId', uniqueId)
-  },
+  // Build a unique identity per test so Aggregation and TND never merge
+  const fileBase = test.file ? path.basename(test.file, path.extname(test.file)) : ''
+  const title    = test.title || ''
+  const unique   = `${flow}::${fileBase}::${title}`
+
+  // Tell Allure "these are different tests"
+  allure.addLabel('testCaseId', unique)
+  allure.addLabel('fullName',   unique)
+},
 
   afterTest: async (test, _context, { passed }) => {
     if (!passed) await attachScreenshot(`Failed - ${test.title}`)
