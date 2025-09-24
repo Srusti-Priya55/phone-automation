@@ -9,7 +9,7 @@ const MOCHA_RETRIES = parseInt(process.env.MOCHA_RETRIES || '0', 10)
 const SPEC_RETRIES  = parseInt(process.env.SPEC_RETRIES  || '0', 10)
 
 // use Node's path so we can build a stable per-test id
-const path = require('path')
+const path = require('path');
 
 export const config: WebdriverIO.Config = {
   runner: 'local',
@@ -93,26 +93,27 @@ export const config: WebdriverIO.Config = {
       addConsoleLogs: true,
     }]
   ],
-
 beforeTest: async (test) => {
   const allure = require('@wdio/allure-reporter').default
-  const path = require('path')
+  const flow   = process.env.CURRENT_FLOW || 'Adhoc'
 
-  const flow = process.env.CURRENT_FLOW || 'Adhoc'
-
-  // Flat tree: everything under the FLOW name (no nested folders)
-  allure.addLabel('parentSuite', flow)
-  allure.addLabel('suite', flow)
-
-  // Build a unique identity per FLOW + FILE + TITLE
+  // Which spec file and which "describe" title produced this test
   const fileBase = test.file ? path.basename(test.file, path.extname(test.file)) : ''
-  const title    = test.title || ''
-  const unique   = `${flow}::${fileBase}::${title}`
+  const parent   = test.parent || ''     // the `describe(...)` title
+  const title    = test.title  || ''     // the `it(...)` title
 
-  // Tell Allure these are different tests across flows
-  allure.addLabel('testCaseId', unique)
-  allure.addLabel('historyId',  unique)
-  allure.addLabel('fullName',   unique)
+  // 1) Top-level group = FLOW (Aggregation / TND / Negatives / etc.)
+  allure.addLabel('parentSuite', flow)
+
+  // 2) Second level = the spec/section name (so you get 7 items per flow)
+  //    Use the describe title if present, otherwise fall back to file name.
+  allure.addLabel('suite', parent || fileBase)
+
+  // 3) Make this test unique across flows/specs so Allure never merges them
+  const uniqueId = `${flow}::${fileBase}::${parent}::${title}`
+  allure.addLabel('testCaseId', uniqueId)
+  allure.addLabel('historyId',  uniqueId)
+  allure.addLabel('fullName',   uniqueId)   // belt & suspenders
 },
 
   afterTest: async (test, _context, { passed }) => {
