@@ -122,9 +122,9 @@ export async function runInterfaceChangeCheck() {
     await attachText('InterfaceChange logs after Wi-Fi OFF', txt)
   })
 
-  await step('Clear logs again', async () => {
-    await run(`adb logcat -c`)
-  })
+  // await step('Clear logs again', async () => {
+  //   await run(`adb logcat -c`)
+  // })
 
   await step('Turn Wi-Fi ON and check logs', async () => {
     await run(`adb shell svc wifi enable`)
