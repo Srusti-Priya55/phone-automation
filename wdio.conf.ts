@@ -94,25 +94,24 @@ export const config: WebdriverIO.Config = {
     }]
   ],
 
-  // ---------- Allure shaping (this is the key part) ----------
 beforeTest: async (test) => {
   const allure = require('@wdio/allure-reporter').default
   const path = require('path')
 
-  // Flow name set by your batch file (Aggregation Check / TND Check / Negatives / etc.)
   const flow = process.env.CURRENT_FLOW || 'Adhoc'
 
-  // Put everything directly under the flow (flat tree, no nested folders)
+  // Flat tree: everything under the FLOW name (no nested folders)
   allure.addLabel('parentSuite', flow)
-  allure.addLabel('suite',       flow)
+  allure.addLabel('suite', flow)
 
-  // Build a unique identity per test so Aggregation and TND never merge
+  // Build a unique identity per FLOW + FILE + TITLE
   const fileBase = test.file ? path.basename(test.file, path.extname(test.file)) : ''
   const title    = test.title || ''
   const unique   = `${flow}::${fileBase}::${title}`
 
-  // Tell Allure "these are different tests"
+  // Tell Allure these are different tests across flows
   allure.addLabel('testCaseId', unique)
+  allure.addLabel('historyId',  unique)
   allure.addLabel('fullName',   unique)
 },
 
