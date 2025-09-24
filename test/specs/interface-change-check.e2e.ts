@@ -138,7 +138,7 @@ export async function runInterfaceChangeCheck() {
   const cmd = process.platform === 'win32'
     ? 'adb logcat -d | findstr /i nvmagent'
     : 'adb logcat -d | grep -i nvmagent || true'
-
+  await sleep(8000)
   const { stdout } = await run(cmd).catch(() => ({ stdout: '' }))
   await attachText('NVM logcat', stdout || '(no nvmagent lines found)')
 })
