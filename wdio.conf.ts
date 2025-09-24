@@ -3,9 +3,9 @@ import { androidRealCaps } from './config/android.real.cap'
 import allure from '@wdio/allure-reporter'
 import { attachScreenshot } from './test/utils/report'
 import { dumpNvmLogs } from './test/utils/logcat'
-import path from 'node:path'
 const MOCHA_RETRIES = parseInt(process.env.MOCHA_RETRIES || '0', 10)
 const SPEC_RETRIES  = parseInt(process.env.SPEC_RETRIES  || '0', 10)
+const path =require('path');
 
 export const config: WebdriverIO.Config = {
   runner: 'local',
@@ -104,19 +104,21 @@ export const config: WebdriverIO.Config = {
   ],
 
 beforeTest: async (test) => {
-    const allure = require('@wdio/allure-reporter').default
-    const flow = process.env.CURRENT_FLOW || 'Adhoc'
+  const allure = require('@wdio/allure-reporter').default
+  const flow = process.env.CURRENT_FLOW || 'Adhoc'
 
-    // Group by flow
-    allure.addLabel('suite', flow)
+  // Flat group: everything goes under the flow (Aggregation / TND / Negatives)
+  allure.addLabel('suite', flow)
 
-    // Use parent + title → ensures each "describe/it" shows separately
-    const full = [test.parent || '', test.title || '']
-        .filter(Boolean)
-        .join(' :: ')
+  // Make test unique per FLOW using the spec file name + test title
+  // e.g. flow=Aggregation, file=install-adb, title="installs APK…"
+  const fileBase = test.file ? path.basename(test.file, path.extname(test.file)) : ''
+  const title    = test.title || ''
+  const uniqueId = `${flow}::${fileBase}::${title}`
 
-    // Add unique testCaseId
-    allure.addLabel('testCaseId', `${flow}::${full}`)
+  // Prevent Allure from merging copies with the same title
+  allure.addLabel('testCaseId', uniqueId)
+  allure.addLabel('fullName',   uniqueId)
 },
   afterTest: async (test, _context, { passed }) => {
     if (!passed) await attachScreenshot(`Failed - ${test.title}`)
