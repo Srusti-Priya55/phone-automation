@@ -108,6 +108,8 @@ async function readInterfaceChangeLogs(): Promise<string> {
   })
 
 
+/* ---------- APPENDED: exported runner for orchestrators ---------- */
+/** Re-usable runner for E2E flows. Mirrors the test steps above. */
 export async function runInterfaceChangeCheck() {
   await step('Clear previous logcat buffer', async () => {
     await sleep(3000)
