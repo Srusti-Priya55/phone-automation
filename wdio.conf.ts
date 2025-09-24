@@ -104,21 +104,19 @@ export const config: WebdriverIO.Config = {
   ],
 
 beforeTest: async (test) => {
-  const allure = require('@wdio/allure-reporter').default
-  const flow = process.env.CURRENT_FLOW || 'Adhoc'
+    const allure = require('@wdio/allure-reporter').default
+    const flow = process.env.CURRENT_FLOW || 'Adhoc'
 
-  // Flat group: everything goes under the flow (Aggregation / TND / Negatives)
-  allure.addLabel('suite', flow)
+    // Flat grouping: top-level by flow
+    allure.addLabel('suite', flow)
 
-  // Make test unique per FLOW using the spec file name + test title
-  // e.g. flow=Aggregation, file=install-adb, title="installs APK…"
-  const fileBase = test.file ? path.basename(test.file, path.extname(test.file)) : ''
-  const title    = test.title || ''
-  const uniqueId = `${flow}::${fileBase}::${title}`
+    // Use file name + title to keep each test unique
+    const fileBase = test.file ? path.basename(test.file, path.extname(test.file)) : ''
+    const title = test.title || ''
+    const uniqueId = `${flow}::${fileBase}::${title}`
 
-  // Prevent Allure from merging copies with the same title
-  allure.addLabel('testCaseId', uniqueId)
-  allure.addLabel('fullName',   uniqueId)
+    // Tell Allure this test is unique
+    allure.addLabel('testCaseId', uniqueId)
 },
   afterTest: async (test, _context, { passed }) => {
     if (!passed) await attachScreenshot(`Failed - ${test.title}`)
