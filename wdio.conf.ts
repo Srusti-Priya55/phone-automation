@@ -97,23 +97,21 @@ beforeTest: async (test) => {
   const allure = require('@wdio/allure-reporter').default
   const flow   = process.env.CURRENT_FLOW || 'Adhoc'
 
-  // Which spec file and which "describe" title produced this test
   const fileBase = test.file ? path.basename(test.file, path.extname(test.file)) : ''
-  const parent   = test.parent || ''     // the `describe(...)` title
-  const title    = test.title  || ''     // the `it(...)` title
+  const parent   = test.parent || ''     // describe(...)
+  const title    = test.title  || ''     // it(...)
 
-  // 1) Top-level group = FLOW (Aggregation / TND / Negatives / etc.)
+  // FLOW at top level
   allure.addLabel('parentSuite', flow)
 
-  // 2) Second level = the spec/section name (so you get 7 items per flow)
-  //    Use the describe title if present, otherwise fall back to file name.
+  // section per spec/describe so you get 7 rows per flow
   allure.addLabel('suite', parent || fileBase)
 
-  // 3) Make this test unique across flows/specs so Allure never merges them
+  // make the test unique so Allure never merges with TND copies
   const uniqueId = `${flow}::${fileBase}::${parent}::${title}`
   allure.addLabel('testCaseId', uniqueId)
   allure.addLabel('historyId',  uniqueId)
-  allure.addLabel('fullName',   uniqueId)   // belt & suspenders
+  allure.addLabel('fullName',   uniqueId)
 },
 
   afterTest: async (test, _context, { passed }) => {
