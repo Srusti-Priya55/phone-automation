@@ -109,14 +109,6 @@ async function readInterfaceChangeLogs(): Promise<string> {
 
 
 export async function runInterfaceChangeCheck() {
-  await step('NVM logcat', async () => {
-  const cmd = process.platform === 'win32'
-    ? 'adb logcat -d | findstr /i nvmagent'
-    : 'adb logcat -d | grep -i nvmagent || true'
-
-  const { stdout } = await run(cmd).catch(() => ({ stdout: '' }))
-  await attachText('NVM logcat', stdout || '(no nvmagent lines found)')
-})
   await step('Clear previous logcat buffer', async () => {
     await sleep(3000)
     await run(`adb logcat -c`)
@@ -142,6 +134,13 @@ export async function runInterfaceChangeCheck() {
     await attachText('InterfaceChange logs after Wi-Fi ON', txt)
   })
 
+  await step('NVM logcat', async () => {
+  const cmd = process.platform === 'win32'
+    ? 'adb logcat -d | findstr /i nvmagent'
+    : 'adb logcat -d | grep -i nvmagent || true'
 
+  const { stdout } = await run(cmd).catch(() => ({ stdout: '' }))
+  await attachText('NVM logcat', stdout || '(no nvmagent lines found)')
+})
 
 }
