@@ -4,11 +4,9 @@ import allure from '@wdio/allure-reporter'
 import { attachScreenshot } from './test/utils/report'
 import { dumpNvmLogs } from './test/utils/logcat'
 
-// keep these as you had
 const MOCHA_RETRIES = parseInt(process.env.MOCHA_RETRIES || '0', 10)
 const SPEC_RETRIES  = parseInt(process.env.SPEC_RETRIES  || '0', 10)
 
-// use Node's path so we can build a stable per-test id
 const path = require('path');
 
 export const config: WebdriverIO.Config = {
