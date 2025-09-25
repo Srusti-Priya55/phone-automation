@@ -39,9 +39,7 @@ async function captureNvmLogs() {
   allure.addAttachment('NVM Agent Logs', stdout, 'text/plain')
 }
     describe(`${FLOW} - Cisco Secure Client - add ASA, then connect via username and password`, () => {
-
-
-    })
+  
     it('adds ASA, toggles VPN, connects, captures NVM logs', async () => {
         await step('Bring Cisco Secure Client to foreground', async () => {
         await foregroundCisco()
@@ -90,6 +88,7 @@ async function captureNvmLogs() {
         await captureNvmLogs()
         })
     })
+  })
 
 
 
