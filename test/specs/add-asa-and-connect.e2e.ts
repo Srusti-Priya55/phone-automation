@@ -283,8 +283,7 @@ async function fillCredsAndConnect(user: string, pass: string) {
   await passField.waitForDisplayed({ timeout: 8000 })
   await passField.click()
   await passField.setValue(pass)
-  await driver.back() // hide keyboard
-
+  await driver.back() 
   const connect = await $('//android.widget.Button[@text="Connect"]')
   await connect.waitForEnabled({ timeout: 15000 })
   await connect.click()
@@ -354,4 +353,10 @@ export async function runAddAsaAndConnect() {
   await step('Capture NVM Agent logs', async () => {
     await captureNvmLogs()
   })
+
+
+
 }
+
+
+
