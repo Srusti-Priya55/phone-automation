@@ -18,7 +18,7 @@ export const config: WebdriverIO.Config = {
   specs: ['./test/specs/**/*.ts'],
   exclude: [],
 
-  // ---- Jenkins checkboxes (unchanged) ----
+  // ---- Jenkins checkboxes----
   suites: {
     install_adb: [
       'test/specs/install-adb.e2e.ts',
@@ -92,26 +92,20 @@ export const config: WebdriverIO.Config = {
     }]
   ],
 beforeTest: async (test) => {
-  const allure = require('@wdio/allure-reporter').default
-  const flow   = process.env.CURRENT_FLOW || 'Adhoc'
+    const allure = require('@wdio/allure-reporter').default
+    const flow = process.env.CURRENT_FLOW || 'Adhoc'
 
-  const fileBase = test.file ? path.basename(test.file, path.extname(test.file)) : ''
-  const parent   = test.parent || ''     // describe(...)
-  const title    = test.title  || ''     // it(...)
+    const fileBase = test.file ? path.basename(test.file, path.extname(test.file)) : ''
+    const parent = `${flow}::${test.parent || fileBase}`   // <- FORCE FLOW into parent
+    const title = test.title || ''
 
-  // FLOW at top level
-  allure.addLabel('parentSuite', flow)
-
-  // section per spec/describe so you get 7 rows per flow
-  allure.addLabel('suite', parent || fileBase)
-
-  // make the test unique so Allure never merges with TND copies
-  const uniqueId = `${flow}::${fileBase}::${parent}::${title}`
-  allure.addLabel('testCaseId', uniqueId)
-  allure.addLabel('historyId',  uniqueId)
-  allure.addLabel('fullName',   uniqueId)
+    allure.addLabel('parentSuite', flow)
+    allure.addLabel('suite', parent)
+    const uniqueId = `${flow}::${fileBase}::${parent}::${title}`
+    allure.addLabel('testCaseId', uniqueId)
+    allure.addLabel('historyId', uniqueId)
+    allure.addLabel('fullName', uniqueId)
 },
-
   afterTest: async (test, _context, { passed }) => {
     if (!passed) await attachScreenshot(`Failed - ${test.title}`)
     if (/\b(NVM|VPN|Wi[- ]?Fi)\b/i.test(test.title) || process.env.NVM_LOGS === '1') {
