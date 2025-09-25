@@ -38,7 +38,7 @@ async function captureNvmLogs() {
   const { stdout } = await exec(cmd, { maxBuffer: 20 * 1024 * 1024 })
   allure.addAttachment('NVM Agent Logs', stdout, 'text/plain')
 }
-    describe(`Cisco Secure Client - add ASA, then connect via username and password`, () => {
+    describe(`${FLOW} - Cisco Secure Client - add ASA, then connect via username and password`, () => {
 
 
     })
@@ -109,7 +109,6 @@ async function tapPlusFab() {
     await (await byDesc[0]).click()
     return
   }
-  // 2) Common FAB class near bottom-right
   const fabs = $$('android=new UiSelector().className("android.widget.ImageButton")') as unknown as WebdriverIO.ElementArray
   if (await fabs.length) {
     try {
@@ -117,7 +116,6 @@ async function tapPlusFab() {
       return
     } catch { /* fall through */ }
   }
-  // 3) Coordinate fallback
   await tapBottomRight()
 }
 

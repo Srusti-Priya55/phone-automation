@@ -93,7 +93,7 @@ export async function runUninstallAdb() {
 
 /** ---- Test ---- */
 
-describe(`Uninstall Cisco Secure Client via ADB`, () => {
+describe(`${FLOW} - Uninstall Cisco Secure Client via ADB`, () => {
   it('removes the app cleanly and verifies it is gone', async () => {
     await runUninstallAdb()
   })

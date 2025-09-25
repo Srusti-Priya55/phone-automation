@@ -9,6 +9,7 @@ const SERVICE_NAME = 'Cisco Secure Client'
 const FLOW = process.env.CURRENT_FLOW || 'Adhoc';
 const sleep = (ms: number) => new Promise(res => setTimeout(res, ms))
 
+
 async function takeAndAttachScreenshot(name: string) {
   const b64 = await driver.takeScreenshot()
   allure.addAttachment(name, Buffer.from(b64, 'base64'), 'image/png')
@@ -148,7 +149,6 @@ export async function runCheckNvmService() {
     }
     await takeAndAttachScreenshot('Cisco Secure Client - Running Services')
   })
-
   // --- new: capture nvmagent logs ---
   await step('Capture nvmagent logs (while service is running)', async () => {
     await sleep(1000)
@@ -159,7 +159,7 @@ export async function runCheckNvmService() {
 
 /* ---------- The Test (kept runnable by itself) ---------- */
 
-  describe(`Verify Cisco Secure Client [NVM] service is running`, () => {
+  describe(`${FLOW} - Verify Cisco Secure Client [NVM] service is running`, () => {
     it('navigates to Running Services and checks Cisco Secure Client', async () => {
       await runCheckNvmService()
     })

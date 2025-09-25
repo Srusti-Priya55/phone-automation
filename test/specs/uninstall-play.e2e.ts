@@ -79,7 +79,7 @@ export async function runUninstallPlay() {
 
 /* ---------------- the test ---------------- */
 
-describe(`Uninstall Cisco Secure Client via Play Store`, () => {
+describe(`${FLOW} - Uninstall Cisco Secure Client via Play Store`, () => {
 
   it('navigates to Play Store, clicks Uninstall, and verifies removal', async () => {
     await runUninstallPlay()

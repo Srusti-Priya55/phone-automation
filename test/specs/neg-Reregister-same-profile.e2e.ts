@@ -143,7 +143,7 @@ async function chooseFirstRealProfileOption() {
 }
 
 /* ---------- the test ---------- */
-describe(`Negative flow: Register (0) → Re-register (-6) → Unregister (0)`, () => {
+describe(`${FLOW} - Negative flow: Register (0) → Re-register (-6) → Unregister (0)`, () => {
   const PROFILE_LOCAL  = path.resolve(__dirname, '../../apps/nap_json1.txt')
   const PROFILE_REMOTE = '/sdcard/nap_json1.txt'
   const APP_LABEL      = 'Knox SDK Test Tool'

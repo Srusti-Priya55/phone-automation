@@ -4,10 +4,12 @@ import allure from '@wdio/allure-reporter'
 import { attachScreenshot } from './test/utils/report'
 import { dumpNvmLogs } from './test/utils/logcat'
 
+// keep these as you had
 const MOCHA_RETRIES = parseInt(process.env.MOCHA_RETRIES || '0', 10)
 const SPEC_RETRIES  = parseInt(process.env.SPEC_RETRIES  || '0', 10)
 
-const path = require('path');
+// use Node's path so we can build a stable per-test id
+const path = require('path')
 
 export const config: WebdriverIO.Config = {
   runner: 'local',
@@ -18,7 +20,7 @@ export const config: WebdriverIO.Config = {
   specs: ['./test/specs/**/*.ts'],
   exclude: [],
 
-  // ---- Jenkins checkboxes----
+  // ---- Jenkins checkboxes (unchanged) ----
   suites: {
     install_adb: [
       'test/specs/install-adb.e2e.ts',
@@ -91,21 +93,23 @@ export const config: WebdriverIO.Config = {
       addConsoleLogs: true,
     }]
   ],
+// wdio.conf.ts
 beforeTest: async (test) => {
-    const allure = require('@wdio/allure-reporter').default
-    const flow = process.env.CURRENT_FLOW || 'Adhoc'
+  const allure = require('@wdio/allure-reporter').default
+  const path = require('path')
+  const flow = process.env.CURRENT_FLOW || 'Adhoc'
 
-    const fileBase = test.file ? path.basename(test.file, path.extname(test.file)) : ''
-    const parent = `${flow}::${test.parent || fileBase}`   // <- FORCE FLOW into parent
-    const title = test.title || ''
+  const fileBase = test.file ? path.basename(test.file, path.extname(test.file)) : ''
+  const title    = test.title || ''
 
-    allure.addLabel('parentSuite', flow)
-    allure.addLabel('suite', parent)
-    const uniqueId = `${flow}::${fileBase}::${parent}::${title}`
-    allure.addLabel('testCaseId', uniqueId)
-    allure.addLabel('historyId', uniqueId)
-    allure.addLabel('fullName', uniqueId)
+  // DO NOT set 'suite' or 'parentSuite' here
+  const id = `${flow}::${fileBase}::${title}`
+  allure.addLabel('testCaseId', id)
+  allure.addLabel('historyId', id)
+  allure.addLabel('fullName', id)
 },
+
+
   afterTest: async (test, _context, { passed }) => {
     if (!passed) await attachScreenshot(`Failed - ${test.title}`)
     if (/\b(NVM|VPN|Wi[- ]?Fi)\b/i.test(test.title) || process.env.NVM_LOGS === '1') {
