@@ -4,7 +4,6 @@ import allure from '@wdio/allure-reporter'
 import { attachScreenshot } from './test/utils/report'
 import { dumpNvmLogs } from './test/utils/logcat'
 
-// keep these as you had
 const MOCHA_RETRIES = parseInt(process.env.MOCHA_RETRIES || '0', 10)
 const SPEC_RETRIES  = parseInt(process.env.SPEC_RETRIES  || '0', 10)
 
@@ -25,7 +24,7 @@ export const config: WebdriverIO.Config = {
     install_adb: [
       'test/specs/install-adb.e2e.ts',
       'test/specs/push-and-register.e2e.ts',
-      'test/specs/add-asa-and-connect.e2e.ts',
+      'test/specs/vpn-connect.e2e.ts',
       'test/specs/nvm-service-check.e2e.ts',
       'test/specs/interface-change-check.e2e.ts',
       'test/specs/unregister-profile.e2e.ts',
@@ -34,7 +33,7 @@ export const config: WebdriverIO.Config = {
     install_play: [
       'test/specs/install-play.e2e.ts',
       'test/specs/push-and-register.e2e.ts',
-      'test/specs/add-asa-and-connect.e2e.ts',
+      'test/specs/vpn-connect.e2e.ts',
       'test/specs/nvm-service-check.e2e.ts',
       'test/specs/interface-change-check.e2e.ts',
       'test/specs/unregister-profile.e2e.ts',
@@ -42,22 +41,143 @@ export const config: WebdriverIO.Config = {
     ],
     aggregation_check: [
       'test/specs/install-adb.e2e.ts',
-      'test/specs/aggregation-check.e2e.ts',
-      'test/specs/add-asa-and-connect.e2e.ts',
+      'test/specs/push-trusted-and-register.e2e.ts',
+      'test/specs/vpn-connect.e2e.ts',
       'test/specs/nvm-service-check.e2e.ts',
-      'test/specs/interface-change-check.e2e.ts',
+      'test/specs/disconnect-vpn.e2e.ts',
+      'test/specs/traffic.e2e.ts',
       'test/specs/unregister-profile.e2e.ts',
       'test/specs/uninstall-adb.e2e.ts',
     ],
     tnd_check: [
       'test/specs/install-adb.e2e.ts',
-      'test/specs/tnd-check.e2e.ts',
-      'test/specs/add-asa-and-connect.e2e.ts',
+      'test/specs/push-trusted-and-register.e2e.ts',
+      'test/specs/vpn-connect.e2e.ts',
       'test/specs/nvm-service-check.e2e.ts',
       'test/specs/interface-change-check.e2e.ts',
       'test/specs/unregister-profile.e2e.ts',
       'test/specs/uninstall-adb.e2e.ts',
     ],
+    collection_mode_all: [
+      'test/specs/install-adb.e2e.ts',
+      'test/specs/push-and-register.e2e.ts',
+      'test/specs/vpn-connect.e2e.ts',
+      'test/specs/nvm-service-check.e2e.ts',
+      'test/specs/disconnect-vpn.e2e.ts',
+      'test/specs/traffic.e2e.ts',
+      'test/specs/nvm-logs.e2e.ts',
+      'test/specs/unregister-profile.e2e.ts',
+      'test/specs/uninstall-adb.e2e.ts',
+    ],
+
+    collection_mode_trusted: [
+      'test/specs/install-adb.e2e.ts',
+      'test/specs/push-trusted-and-register.e2e.ts',
+      'test/specs/vpn-connect.e2e.ts',
+      'test/specs/nvm-service-check.e2e.ts',
+      'test/specs/disconnect-vpn.e2e.ts',
+      'test/specs/traffic.e2e.ts',
+      'test/specs/unregister-profile.e2e.ts',
+      'test/specs/uninstall-adb.e2e.ts',
+    ],
+
+    collection_mode_untrusted: [
+      'test/specs/install-adb.e2e.ts',
+      'test/specs/push-untrusted-and-register.e2e.ts',
+      'test/specs/vpn-connect.e2e.ts',
+      'test/specs/nvm-service-check.e2e.ts',
+      'test/specs/disconnect-vpn.e2e.ts',
+      'test/specs/traffic.e2e.ts',
+      'test/specs/unregister-profile.e2e.ts',
+      'test/specs/uninstall-adb.e2e.ts',
+    ],
+
+    interface_info: [
+      'test/specs/install-adb.e2e.ts',
+      'test/specs/push-and-register.e2e.ts',
+      'test/specs/vpn-connect.e2e.ts',
+      'test/specs/nvm-service-check.e2e.ts',
+      'test/specs/disconnect-vpn.e2e.ts',
+      'test/specs/interface-change-check.e2e.ts',
+      'test/specs/unregister-profile.e2e.ts',
+      'test/specs/uninstall-adb.e2e.ts',
+    ],
+    ipfix_disable: [
+      'test/specs/install-adb.e2e.ts',
+      'test/specs/push-and-register-etc.e2e.ts',
+      'test/specs/vpn-connect.e2e.ts',
+      'test/specs/nvm-service-check.e2e.ts',
+      'test/specs/disconnect-vpn.e2e.ts',
+      'test/specs/traffic.e2e.ts',
+      'test/specs/unregister-profile.e2e.ts',
+      'test/specs/uninstall-adb.e2e.ts',
+    ],
+    ipfix_zero: [
+      'test/specs/install-adb.e2e.ts',
+      'test/specs/push-and-register-etc0.e2e.ts',
+      'test/specs/vpn-connect.e2e.ts',
+      'test/specs/nvm-service-check.e2e.ts',
+      'test/specs/disconnect-vpn.e2e.ts',
+      'test/specs/traffic.e2e.ts',
+      'test/specs/unregister-profile.e2e.ts',
+      'test/specs/uninstall-adb.e2e.ts',
+    ],
+    
+    parent_process_check: [
+      'test/specs/install-adb.e2e.ts',
+      'test/specs/push-trusted-and-register.e2e.ts',
+      'test/specs/vpn-connect.e2e.ts',
+      'test/specs/nvm-service-check.e2e.ts',
+      'test/specs/traffic.e2e.ts',
+      'test/specs/unregister-profile.e2e.ts',
+      'test/specs/uninstall-adb.e2e.ts',
+    ],
+
+    template_caching_untrusted: [
+      'test/specs/install-adb.e2e.ts',
+      'test/specs/template-caching-untrusted.e2e.ts',
+      'test/specs/vpn-connect.e2e.ts',
+      'test/specs/nvm-service-check.e2e.ts',
+      'test/specs/traffic.e2e.ts',
+      'test/specs/unregister-profile.e2e.ts',
+      'test/specs/uninstall-adb.e2e.ts',
+    ],
+    before_after_reboot: [
+      'test/specs/install-adb.e2e.ts',
+      'test/specs/push-trusted-and-register.e2e.ts',
+      'test/specs/vpn-connect.e2e.ts',
+      'test/specs/nvm-service-check.e2e.ts',
+      'test/specs/disconnect-vpn.e2e.ts',
+      'test/specs/reboot-and-traffic.e2e.ts',
+      'test/specs/unregister-profile.e2e.ts',
+      'test/specs/uninstall-adb.e2e.ts',
+    ],
+    aup_should_displayed: [
+      'test/specs/install-adb.e2e.ts',
+      'test/specs/push-and-register.e2e.ts',
+      'test/specs/vpn-connect.e2e.ts',
+      'test/specs/nvm-service-check.e2e.ts',
+      'test/specs/aup-verify.e2e.ts',
+      'test/specs/unregister-profile.e2e.ts',
+      'test/specs/uninstall-adb.e2e.ts',
+    ],
+
+    aup_should_not_displayed: [
+      'test/specs/install-adb.e2e.ts',
+      'test/specs/push-trusted-and-register.e2e.ts',
+      'test/specs/vpn-connect.e2e.ts',
+      'test/specs/nvm-service-check.e2e.ts',
+      'test/specs/aup-verify.e2e.ts',
+      'test/specs/unregister-profile.e2e.ts',
+      'test/specs/uninstall-adb.e2e.ts',
+    ],
+    eula_not_accepted: [
+      'test/specs/push-and-register.e2e.ts',
+      'test/specs/install-adb-cancel-eula.e2e.ts',
+      'test/specs/unregister-profile.e2e.ts',
+      'test/specs/uninstall-adb.e2e.ts',
+    ],
+
     negatives: [
       'test/specs/neg-Reregister-same-profile.e2e.ts',
       'test/specs/neg-invalid-profile-push-register.e2e.ts',
@@ -110,10 +230,18 @@ beforeTest: async (test) => {
 },
 
 
-  afterTest: async (test, _context, { passed }) => {
-    if (!passed) await attachScreenshot(`Failed - ${test.title}`)
-    if (/\b(NVM|VPN|Wi[- ]?Fi)\b/i.test(test.title) || process.env.NVM_LOGS === '1') {
-      await dumpNvmLogs(2000)
+afterTest: async (test, _context, { passed }) => {
+  try {
+    const rebooting = (global as any).__REBOOT_IN_PROGRESS__ === true
+    if (!passed && !rebooting && (browser as any)?.sessionId) {
+      await attachScreenshot(`Failed - ${test.title}`)
     }
-  },
+  } catch {}
+  if (/\b(NVM|VPN|Wi[- ]?Fi)\b/i.test(test.title) || process.env.NVM_LOGS === '1') {
+    await dumpNvmLogs(2000).catch(() => {})
+  }
+},
+
+
+
 }
