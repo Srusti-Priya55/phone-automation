@@ -2,10 +2,8 @@ pipeline {
   agent any
 
   parameters {
-    // master switch
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all suites')
 
-    // suites (exact keys must match wdio.conf.ts -> suites)
     booleanParam(name: 'install_adb',                defaultValue: false, description: '')
     booleanParam(name: 'install_play',               defaultValue: false, description: '')
     booleanParam(name: 'aggregation_check',          defaultValue: false, description: '')
@@ -24,7 +22,6 @@ pipeline {
     booleanParam(name: 'eula_not_accepted',          defaultValue: false, description: '')
     booleanParam(name: 'negatives',                  defaultValue: false, description: '')
 
-    // comma-separated list (e.g. "a@x.com,b@y.com")
     string(name: 'EMAILS', defaultValue: '', description: 'Recipients (comma-separated)')
   }
 
@@ -47,23 +44,25 @@ pipeline {
           def chosen = params.RUN_ALL ? all : all.findAll { params[it] }
           if (!chosen) error 'No suites selected — pick at least one or enable RUN_ALL'
           env.CHOSEN = chosen.join(',')
-          echo "Suites: ${env.CHOSEN}"
+          echo "Suites selected: ${env.CHOSEN}"
         }
       }
     }
 
-    stage('Clean old reports') {
+    stage('Clean old allure results & screenshots') {
       steps {
         bat '''
+        echo Cleaning old Allure results and screenshots...
         if exist allure-results rmdir /s /q allure-results
         if exist allure-report  rmdir /s /q allure-report
+        if exist allure-report-light rmdir /s /q allure-report-light
         if exist allure-report.zip del /f /q allure-report.zip
-        if exist allure-report.allurezip del /f /q allure-report.allurezip
+        if exist allure-report.light.allurezip del /f /q allure-report.light.allurezip
         '''
       }
     }
 
-    stage('Install deps') {
+    stage('Install dependencies') {
       steps {
         bat '''
         call node -v
@@ -74,7 +73,7 @@ pipeline {
       }
     }
 
-    stage('Run suites (sequential, with CURRENT_FLOW)') {
+    stage('Run selected suites') {
       steps {
         script {
           def FLOW = [
@@ -100,7 +99,6 @@ pipeline {
             def flow = FLOW.get(suite, suite)
             echo "=== RUNNING ${suite} [FLOW=${flow}] ==="
             withEnv(["CURRENT_FLOW=${flow}"]) {
-              // Continue even if a suite fails; pipeline result becomes FAILURE but post{always} still runs
               catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                 bat "npx wdio run wdio.conf.ts --suite ${suite}"
               }
@@ -110,13 +108,12 @@ pipeline {
       }
     }
 
-    // Debug stage: shows whether WDIO actually produced Allure JSONs
-    stage('Check allure-results') {
+    stage('Verify allure-results') {
       steps {
         bat '''
-          echo ===== contents of allure-results =====
-          if exist allure-results ( dir /b allure-results ) else ( echo NO allure-results FOLDER )
-          echo =====================================
+          echo ===== Checking allure-results =====
+          if exist allure-results ( dir /b allure-results ) else ( echo NO allure-results folder found! )
+          echo ===================================
         '''
       }
     }
@@ -124,7 +121,7 @@ pipeline {
 
   post {
     always {
-      // 1) Publish Allure link on the build page (requires Allure Jenkins Plugin)
+      // Generate and publish reports
       script {
         if (fileExists('allure-results')) {
           allure(results: [[path: 'allure-results']])
@@ -133,51 +130,50 @@ pipeline {
         }
       }
 
-      // 2) Generate static HTML report folder
       bat '''
+      echo Generating new Allure report...
       if exist allure-report rmdir /s /q allure-report
       if exist allure-report.zip del /f /q allure-report.zip
-
-      if exist allure-results (
-        npx allure generate --clean allure-results -o allure-report
-      ) else (
-        mkdir allure-report
-        > allure-report\\index.html echo ^<html^><body^><h3^>No allure results were produced.^</h3^>^</body^>^</html^>
-      )
+      npx allure generate --clean allure-results -o allure-report
       '''
 
-      // 3) Create a normal ZIP and a Gmail-safe copy (.allurezip)
+      // Create light copy (no screenshots) for email
+      powershell '''
+        if (Test-Path allure-report-light) { Remove-Item -Recurse -Force allure-report-light }
+        New-Item -ItemType Directory -Path allure-report-light | Out-Null
+        robocopy "allure-report" "allure-report-light" /E /XD "allure-report\\data\\attachments" | Out-Null
+      '''
+
       powershell '''
         if (Test-Path allure-report.zip) { Remove-Item allure-report.zip -Force }
+        if (Test-Path allure-report.light.allurezip) { Remove-Item allure-report.light.allurezip -Force }
         Compress-Archive -Path "allure-report/*" -DestinationPath "allure-report.zip"
-        Copy-Item "allure-report.zip" "allure-report.allurezip" -Force
+        Compress-Archive -Path "allure-report-light/*" -DestinationPath "allure-report.light.allurezip"
       '''
 
-      // 4) Archive everything so it’s always downloadable
-      archiveArtifacts artifacts: 'allure-results/**, allure-report/**, allure-report.zip, allure-report.allurezip', fingerprint: true
+      archiveArtifacts artifacts: 'allure-results/**, allure-report/**, allure-report.zip, allure-report-light/**, allure-report.light.allurezip', fingerprint: true
 
-      // 5) Email the Gmail-safe file (works outside your network)
       script {
         if (params.EMAILS?.trim()) {
           emailext(
-            from: 'kencholsrusti@gmail.com',  // set to your Gmail SMTP username
+            from: 'kencholsrusti@gmail.com',
             to: params.EMAILS,
             subject: "Mobile Automation • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
             mimeType: 'text/plain',
             body: """Result: ${currentBuild.currentResult}
-Build page: ${env.BUILD_URL}
+Build: ${env.BUILD_URL}
 
-Online (LAN) report: open the **Allure Report** link on the build page.
+Online report: open the Allure Report link on Jenkins.
 
-Offline copy attached:
-  1) Download: allure-report.allurezip
-  2) Rename to: allure-report.zip
-  3) Extract and open: index.html
+Offline report attached (light version, fresh screenshots only):
+1. Download: allure-report.light.allurezip
+2. Rename to: allure-report.zip
+3. Extract → open index.html
 """,
-            attachmentsPattern: 'allure-report.allurezip'
+            attachmentsPattern: 'allure-report.light.allurezip'
           )
         } else {
-          echo 'EMAILS not provided; skipping email.'
+          echo 'EMAILS not provided — skipping email.'
         }
       }
     }
