@@ -1,98 +1,129 @@
-// Jenkinsfile (Windows agent, uses your existing UI parameters)
-// NOTE: this does NOT declare parameters here, it reads the ones you already made in the UI.
-// Make sure the parameter names match (RUN_ALL, INSTALL_ADB, ..., EMAIL_TO).
-
-def ALL_SUITES = [
-  'install_adb', 'install_play', 'aggregation_check', 'tnd_check',
-  'collection_mode_all', 'collection_mode_trusted', 'collection_mode_untrusted',
-  'interface_info', 'ipfix_disable', 'ipfix_zero', 'parent_process_check',
-  'template_caching_untrusted', 'before_after_reboot',
-  'aup_should_displayed', 'aup_should_not_displayed',
-  'eula_not_accepted', 'negatives'
-]
-
-def FLOW = [
-  install_adb               : 'Install via ADB',
-  install_play              : 'Install via Play Store',
-  aggregation_check         : 'Aggregation Check',
-  tnd_check                 : 'TND Check',
-  collection_mode_all       : 'Collection Mode (All)',
-  collection_mode_trusted   : 'Collection Mode (Trusted)',
-  collection_mode_untrusted : 'Collection Mode (Untrusted)',
-  interface_info            : 'Interface Info',
-  ipfix_disable             : 'IPFIX Disable',
-  ipfix_zero                : 'IPFIX Zero',
-  parent_process_check      : 'Parent Process Check',
-  template_caching_untrusted: 'Template Caching (Untrusted)',
-  before_after_reboot       : 'Before/After Reboot',
-  aup_should_displayed      : 'AUP Should Display',
-  aup_should_not_displayed  : 'AUP Should NOT Display',
-  eula_not_accepted         : 'EULA Not Accepted',
-  negatives                 : 'Negatives'
-]
-
 pipeline {
-  // Your Jenkins is on Windows now; later you can change this label to a Linux agent and swap 'bat' for 'sh'
-  agent { label 'windows' }  // or 'built-in' / 'master' if you run on the controller
+  agent any
 
-  options {
-    timestamps()
-    ansiColor('xterm')
-    skipDefaultCheckout(true)
+  // ---------- PARAMETERS ----------
+  parameters {
+    booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all suites')
+
+    // keep names EXACTLY like in wdio.conf.ts suites
+    booleanParam(name: 'install_adb', defaultValue: false, description: '')
+    booleanParam(name: 'install_play', defaultValue: false, description: '')
+    booleanParam(name: 'aggregation_check', defaultValue: false, description: '')
+    booleanParam(name: 'tnd_check', defaultValue: false, description: '')
+
+    booleanParam(name: 'collection_mode_all', defaultValue: false, description: '')
+    booleanParam(name: 'collection_mode_trusted', defaultValue: false, description: '')
+    booleanParam(name: 'collection_mode_untrusted', defaultValue: false, description: '')
+    booleanParam(name: 'interface_info', defaultValue: false, description: '')
+
+    booleanParam(name: 'ipfix_disable', defaultValue: false, description: '')
+    booleanParam(name: 'ipfix_zero', defaultValue: false, description: '')
+    booleanParam(name: 'parent_process_check', defaultValue: false, description: '')
+    booleanParam(name: 'template_caching_untrusted', defaultValue: false, description: '')
+    booleanParam(name: 'before_after_reboot', defaultValue: false, description: '')
+    booleanParam(name: 'aup_should_displayed', defaultValue: false, description: '')
+    booleanParam(name: 'aup_should_not_displayed', defaultValue: false, description: '')
+    booleanParam(name: 'eula_not_accepted', defaultValue: false, description: '')
+    booleanParam(name: 'negatives', defaultValue: false, description: '')
+
+    string(name: 'EMAILS', defaultValue: '', description: 'comma-separated recipients')
   }
 
   stages {
     stage('Checkout') {
-      steps { checkout scm }
+      steps {
+        checkout scm
+      }
     }
 
-    stage('Resolve selection') {
+    stage('Show selections') {
       steps {
         script {
-          // Build the suite list from your UI parameters
-          suites = []
+          env.ALL_SUITES = [
+            'install_adb','install_play','aggregation_check','tnd_check',
+            'collection_mode_all','collection_mode_trusted','collection_mode_untrusted',
+            'interface_info','ipfix_disable','ipfix_zero','parent_process_check',
+            'template_caching_untrusted','before_after_reboot',
+            'aup_should_displayed','aup_should_not_displayed','eula_not_accepted',
+            'negatives'
+          ].join(',')
+
+          // compute CHOSEN list
+          def allSuites = env.ALL_SUITES.split(',')
+          def picked = []
           if (params.RUN_ALL) {
-            suites = ALL_SUITES
+            picked = allSuites
           } else {
-            if (params.INSTALL_ADB)                suites << 'install_adb'
-            if (params.INSTALL_PLAY)               suites << 'install_play'
-            if (params.AGGREGATION_CHECK)          suites << 'aggregation_check'
-            if (params.TND_CHECK)                  suites << 'tnd_check'
-            if (params.COLLECTION_MODE_ALL)        suites << 'collection_mode_all'
-            if (params.COLLECTION_MODE_TRUSTED)    suites << 'collection_mode_trusted'
-            if (params.COLLECTION_MODE_UNTRUSTED)  suites << 'collection_mode_untrusted'
-            if (params.INTERFACE_INFO)             suites << 'interface_info'
-            if (params.IPFIX_DISABLE)              suites << 'ipfix_disable'
-            if (params.IPFIX_ZERO)                 suites << 'ipfix_zero'
-            if (params.PARENT_PROCESS_CHECK)       suites << 'parent_process_check'
-            if (params.TEMPLATE_CACHING_UNTRUSTED) suites << 'template_caching_untrusted'
-            if (params.BEFORE_AFTER_REBOOT)        suites << 'before_after_reboot'
-            if (params.AUP_SHOULD_DISPLAYED)       suites << 'aup_should_displayed'
-            if (params.AUP_SHOULD_NOT_DISPLAYED)   suites << 'aup_should_not_displayed'
-            if (params.EULA_NOT_ACCEPTED)          suites << 'eula_not_accepted'
-            if (params.NEGATIVES)                  suites << 'negatives'
+            allSuites.each { s -> if (params[s]) picked << s }
           }
-          if (suites.isEmpty()) {
-            error 'No suites selected. Please tick at least one checkbox or RUN_ALL.'
+          env.CHOSEN = picked.join(',')
+
+          echo "RUN_ALL: ${params.RUN_ALL}"
+          echo "Suites chosen: ${env.CHOSEN}"
+          echo "EMAILS: ${params.EMAILS}"
+
+          if (!env.CHOSEN?.trim()) {
+            error "No suites selected — pick at least one or enable RUN_ALL"
           }
-          echo "Suites selected: ${suites}"
         }
+      }
+    }
+
+    stage('Clean previous reports') {
+      steps {
+        // remove old allure artifacts (Windows safe)
+        bat '''
+        if exist allure-results rmdir /s /q allure-results
+        if exist allure-report  rmdir /s /q allure-report
+        '''
       }
     }
 
     stage('Install deps') {
       steps {
-        bat 'npm ci'
+        bat '''
+        call node -v
+        if errorlevel 1 ( echo "Node.js not found in PATH" & exit /b 1 )
+
+        call npm ci
+        if errorlevel 1 exit /b 1
+        '''
       }
     }
 
-    stage('Run WDIO suites') {
+    stage('Run suites sequentially (with CURRENT_FLOW)') {
       steps {
         script {
-          for (s in suites) {
-            def flowName = FLOW[s] ?: s
-            echo "========== RUNNING: ${s} [FLOW=${flowName}] =========="
+          // map each suite to the "flow" label you want to see in Allure
+          def FLOW_MAP = [
+            'install_adb'                : 'Install via ADB',
+            'install_play'               : 'Install via Play Store',
+            'aggregation_check'          : 'Aggregation Check',
+            'tnd_check'                  : 'TND Check',
+
+            'collection_mode_all'        : 'Collection Mode - All',
+            'collection_mode_trusted'    : 'Collection Mode - Trusted',
+            'collection_mode_untrusted'  : 'Collection Mode - Untrusted',
+            'interface_info'             : 'Interface Info',
+
+            'ipfix_disable'              : 'IPFIX Disable',
+            'ipfix_zero'                 : 'IPFIX Zero',
+            'parent_process_check'       : 'Parent Process Check',
+            'template_caching_untrusted' : 'Template Caching - Untrusted',
+            'before_after_reboot'        : 'Before/After Reboot',
+            'aup_should_displayed'       : 'AUP Should Display',
+            'aup_should_not_displayed'   : 'AUP Should NOT Display',
+            'eula_not_accepted'          : 'EULA Not Accepted',
+            'negatives'                   : 'Negatives'
+          ]
+
+          def suites = env.CHOSEN.split(',').findAll { it?.trim() }
+          for (String s in suites) {
+            def flowName = FLOW_MAP.get(s, s)    // default to suite name if not found
+            echo "========== RUNNING: ${s}  [FLOW=${flowName}] =========="
+
             withEnv(["CURRENT_FLOW=${flowName}"]) {
+              // run ONE suite at a time so the flow label stays accurate per test file
               bat "npx wdio run wdio.conf.ts --suite ${s}"
             }
           }
@@ -100,45 +131,43 @@ pipeline {
       }
     }
 
-    stage('Allure & Zip') {
+    stage('Build Allure report') {
       steps {
-        // clean any leftovers (ignore errors)
-        bat '''
-          rmdir /s /q allure-report  2>nul
-          del /q allure-report.zip   2>nul
-        '''
-        bat 'npx allure generate --clean allure-results'
-        // Zip the HTML so we can email it
-        bat 'powershell -NoProfile -Command "Compress-Archive -Path ''allure-report\\*'' -DestinationPath ''allure-report.zip'' -Force"'
+        bat 'npx allure generate --clean allure-results -o allure-report'
       }
     }
 
-    stage('Archive & Email') {
+    stage('Zip Allure report') {
       steps {
-        archiveArtifacts artifacts: 'allure-results/**,allure-report.zip', fingerprint: true
+        powershell '''
+          if (Test-Path allure-report.zip) { Remove-Item allure-report.zip -Force }
+          Compress-Archive -Path "allure-report/*" -DestinationPath "allure-report.zip"
+        '''
+      }
+    }
+  }
 
-        script {
-          def toList = (params.EMAIL_TO ?: '').trim()
-          if (toList) {
-            emailext(
-              to: toList,
-              subject: "Mobile Sanity Suite — ${currentBuild.currentResult} (#${env.BUILD_NUMBER})",
-              attachmentsPattern: 'allure-report.zip',
-              body: """Hello,
+  post {
+    always {
+      archiveArtifacts artifacts: 'allure-results/**, allure-report/**, allure-report.zip', fingerprint: true
 
-Build: ${env.JOB_NAME} #${env.BUILD_NUMBER}
-Status: ${currentBuild.currentResult}
-Console: ${env.BUILD_URL}
-Suites: ${suites.join(', ')}
+      script {
+        if (params.EMAILS?.trim()) {
+          emailext(
+            to: params.EMAILS,
+            subject: "Mobile Automation • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
+            body: """Hi,
 
-Attached: allure-report.zip  (unzip and open index.html)
+Mobile Automation run completed.
 
-– Jenkins
-"""
-            )
-          } else {
-            echo 'EMAIL_TO is empty — skipping email.'
-          }
+Build URL: ${env.BUILD_URL}
+Result: ${currentBuild.currentResult}
+
+Attached: allure-report.zip (open index.html inside to view the earlier report).
+""",
+            attachmentsPattern: 'allure-report.zip',
+            mimeType: 'text/plain'
+          )
         }
       }
     }

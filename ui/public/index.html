@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Mobile Automation — Launcher</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#eef2f7;
+      --card:#ffffffcc;
+      --ink:#1f2937;
+      --muted:#64748b;
+      --stroke:#d7dee9;
+      --accent:#6366f1;
+      --accent2:#14b8a6;
+      --chip:#eef6ff;
+      --chip-stroke:#b9d6ff;
+      --ok:#16a34a;
+      --warn:#f59e0b;
+      --err:#ef4444;
+      --radius:16px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; min-height:100vh;
+      font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;
+      color:var(--ink);
+      background:
+        radial-gradient(900px 600px at -10% 0%, #dbeafe 0%, transparent 60%),
+        radial-gradient(1000px 700px at 110% 20%, #ccfbf1 0%, transparent 60%),
+        var(--bg);
+      display:flex; align-items:center; justify-content:center; padding:28px;
+    }
+    .shell{
+      width:min(1100px,100%);
+      background:var(--card);
+      border:1px solid var(--stroke);
+      backdrop-filter: blur(10px);
+      border-radius:var(--radius);
+      box-shadow:0 20px 50px #0000001a, inset 0 1px 0 #ffffff80;
+      overflow:hidden;
+    }
+    header{
+      padding:18px 22px;
+      display:flex; align-items:center; justify-content:space-between;
+      background:linear-gradient(180deg,#f8fafc,#eef2f7);
+      border-bottom:1px solid var(--stroke);
+    }
+    header h1{margin:0; font-size:20px; display:flex; gap:10px; align-items:center}
+    .logo{width:32px;height:32px;border-radius:10px;background:conic-gradient(from 0deg,#6366f1,#22c55e,#06b6d4,#6366f1); box-shadow:0 0 0 2px #ffffffaa inset}
+    .tag{font-size:12px;color:var(--muted)}
+    main{padding:20px; display:grid; gap:16px}
+    .grid{display:grid; gap:16px}
+    @media (min-width:900px){ .grid-2{grid-template-columns:1.25fr .75fr} }
+    section{border:1px solid var(--stroke); border-radius:14px; padding:16px; background:#ffffffcc}
+    section h2{margin:0 0 10px; font-size:15px; font-weight:700; color:#111827}
+    .row{display:flex; gap:12px; flex-wrap:wrap}
+    .checkbox-grid{display:grid; gap:8px; grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+    label.chk{display:flex; gap:10px; align-items:center; padding:10px 12px; border:1px solid var(--stroke); border-radius:10px; background:#fff; cursor:pointer}
+    label.chk:hover{border-color:#c7d2fe}
+    input[type="checkbox"], input[type="radio"]{accent-color:var(--accent)}
+    .switch{display:inline-flex; align-items:center; gap:10px; padding:8px 12px; border-radius:999px; border:1px solid var(--stroke); background:#fff}
+    .chips{display:flex; gap:8px; flex-wrap:wrap; padding:8px; border:1px solid var(--stroke); background:#fff; border-radius:12px}
+    .chips input{border:none; outline:none; background:transparent; color:var(--ink); padding:8px; min-width:220px; font-size:14px}
+    .chip{display:inline-flex; align-items:center; gap:10px; background:var(--chip); border:1px solid var(--chip-stroke); border-radius:999px; padding:6px 10px}
+    .chip button{background:transparent; border:none; color:#1e40af; cursor:pointer; font-size:14px; line-height:1}
+    .help{font-size:12px; color:var(--muted)}
+    select, input[type="text"], input[type="datetime-local"], input[type="time"]{
+      width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--stroke); background:#fff; color:var(--ink); outline:none
+    }
+    select:focus, input:focus{border-color:#93c5fd; box-shadow:0 0 0 3px #93c5fd55}
+    .bar{display:flex; gap:12px; justify-content:flex-end; padding:14px 20px; border-top:1px solid var(--stroke); background:linear-gradient(180deg,#f8fafc,#eef2f7)}
+    .btn{appearance:none; border:none; border-radius:12px; padding:12px 18px; font-weight:700; cursor:pointer; letter-spacing:.2px}
+    .btn:active{transform:translateY(1px)}
+    .btn-ghost{background:#fff; color:#111827; border:1px solid var(--stroke)}
+    .btn-accent{background:linear-gradient(135deg,#6366f1,#06b6d4); color:white; box-shadow:0 8px 22px #93c5fd55}
+    .btn-green{background:linear-gradient(135deg,#16a34a,#22c55e); color:white; box-shadow:0 8px 22px #22c55e55}
+    .error{color:var(--err); font-size:12px; display:none}
+    #toast{display:none; text-align:center; font-size:13px; padding:8px}
+  </style>
+</head>
+<body>
+  <div class="shell" role="application" aria-label="Mobile Automation Launcher (Light)">
+    <header>
+      <h1><span class="logo" aria-hidden="true"></span> Mobile Automation — Launcher</h1>
+      <div class="tag">WebdriverIO + TypeScript • Email reports</div>
+    </header>
+
+    <main>
+      <form id="launcher" novalidate>
+        <div class="grid grid-2">
+          <!-- SUITES -->
+          <section aria-labelledby="suites-h">
+            <h2 id="suites-h">Suites</h2>
+            <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
+              <label class="switch"><input type="checkbox" id="runAll"> <strong>Run ALL</strong></label>
+            </div>
+            <div class="checkbox-grid" id="suiteGrid">
+              <!-- 16 suites (match WDIO exactly) -->
+              <label class="chk"><input type="checkbox" name="install_adb"> <span>install_adb</span></label>
+              <label class="chk"><input type="checkbox" name="install_play"> <span>install_play</span></label>
+              <label class="chk"><input type="checkbox" name="aggregation_check"> <span>aggregation_check</span></label>
+              <label class="chk"><input type="checkbox" name="tnd_check"> <span>tnd_check</span></label>
+              <label class="chk"><input type="checkbox" name="collection_mode_all"> <span>collection_mode_all</span></label>
+              <label class="chk"><input type="checkbox" name="collection_mode_trusted"> <span>collection_mode_trusted</span></label>
+              <label class="chk"><input type="checkbox" name="collection_mode_untrusted"> <span>collection_mode_untrusted</span></label>
+              <label class="chk"><input type="checkbox" name="interface_info"> <span>interface_info</span></label>
+              <label class="chk"><input type="checkbox" name="ipfix_disable"> <span>ipfix_disable</span></label>
+              <label class="chk"><input type="checkbox" name="ipfix_zero"> <span>ipfix_zero</span></label>
+              <label class="chk"><input type="checkbox" name="parent_process_check"> <span>parent_process_check</span></label>
+              <label class="chk"><input type="checkbox" name="template_caching_untrusted"> <span>template_caching_untrusted</span></label>
+              <label class="chk"><input type="checkbox" name="before_after_reboot"> <span>before_after_reboot</span></label>
+              <label class="chk"><input type="checkbox" name="aup_should_displayed"> <span>aup_should_displayed</span></label>
+              <label class="chk"><input type="checkbox" name="aup_should_not_displayed"> <span>aup_should_not_displayed</span></label>
+              <label class="chk"><input type="checkbox" name="eula_not_accepted"> <span>eula_not_accepted</span></label>
+              <label class="chk"><input type="checkbox" name="negatives"> <span>negatives</span></label>
+            </div>
+          </section>
+
+          <!-- DELIVERY & SCHEDULING -->
+          <section aria-labelledby="delivery-h">
+            <h2 id="delivery-h">Delivery & Scheduling</h2>
+
+            <!-- Emails -->
+            <div class="chips" id="emailChips" aria-label="Email recipients">
+              <input id="emailInput" type="text" placeholder="Add email and press Enter" autocomplete="off" />
+            </div>
+            <div id="emailErr" class="error">Enter a valid email.</div>
+
+            <!-- Mode -->
+            <div class="row" style="margin:12px 0 6px">
+              <label class="switch"><input type="radio" name="mode" value="now" checked> <strong>Run Now</strong></label>
+              <label class="switch"><input type="radio" name="mode" value="schedule"> <strong>Schedule</strong></label>
+            </div>
+
+            <!-- Schedule options -->
+            <div id="scheduleBox" style="display:none; margin-top:8px">
+              <label>Schedule Type
+                <select id="scheduleType">
+                  <option value="once">Run Once (Specific Date & Time)</option>
+                  <option value="daily">Every Day (at time)</option>
+                  <option value="weekly">Weekly (select days & time)</option>
+                </select>
+              </label>
+
+              <div id="onceBox" style="margin-top:10px">
+                <label>Date & Time
+                  <input type="datetime-local" id="runAt">
+                </label>
+              </div>
+
+              <div id="dailyBox" style="display:none; margin-top:10px">
+                <label>Time
+                  <input type="time" id="dailyTime">
+                </label>
+              </div>
+
+              <div id="weeklyBox" style="display:none; margin-top:10px">
+                <label>Time
+                  <input type="time" id="weeklyTime">
+                </label>
+                <div class="row" style="margin-top:8px">
+                  <label class="chk"><input type="checkbox" value="Monday"> Monday</label>
+                  <label class="chk"><input type="checkbox" value="Tuesday"> Tuesday</label>
+                  <label class="chk"><input type="checkbox" value="Wednesday"> Wednesday</label>
+                  <label class="chk"><input type="checkbox" value="Thursday"> Thursday</label>
+                  <label class="chk"><input type="checkbox" value="Friday"> Friday</label>
+                  <label class="chk"><input type="checkbox" value="Saturday"> Saturday</label>
+                  <label class="chk"><input type="checkbox" value="Sunday"> Sunday</label>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="bar">
+          <button type="button" class="btn btn-ghost" id="resetBtn">Reset</button>
+          <button type="submit" class="btn btn-green" id="runBtn">Run</button>
+          <button type="button" class="btn btn-accent" id="scheduleBtn">Schedule</button>
+        </div>
+      </form>
+
+      <div id="toast"></div>
+    </main>
+  </div>
+
+  <script>
+    // -------- helpers --------
+    const $ = (q,root=document)=>root.querySelector(q);
+    const $$ = (q,root=document)=>Array.from(root.querySelectorAll(q));
+    const emailRe=/^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+
+    const runAll=$('#runAll');
+    const suiteBoxes=$$('#suiteGrid input[type="checkbox"]');
+
+    const emailChips=$('#emailChips');
+    const emailInput=$('#emailInput');
+    const emailErr=$('#emailErr');
+    const emails=[];
+
+    const scheduleBox=$('#scheduleBox');
+    const scheduleType=$('#scheduleType');
+    const onceBox=$('#onceBox'), dailyBox=$('#dailyBox'), weeklyBox=$('#weeklyBox');
+    const runAt=$('#runAt'), dailyTime=$('#dailyTime'), weeklyTime=$('#weeklyTime');
+
+    const toast=$('#toast');
+    const runBtn=$('#runBtn'), scheduleBtn=$('#scheduleBtn'), resetBtn=$('#resetBtn');
+
+    // Run ALL toggle
+    runAll.addEventListener('change', ()=> {
+      const on=runAll.checked;
+      suiteBoxes.forEach(b=>{ b.checked=on; b.disabled=on; });
+    });
+
+    // Emails as chips
+    function addEmailChip(val){
+      const v=(val||'').trim();
+      if(!v) return;
+      if(!emailRe.test(v)){ emailErr.style.display='block'; return; }
+      emailErr.style.display='none';
+      if(emails.includes(v)) return;
+      emails.push(v);
+      const chip=document.createElement('span');
+      chip.className='chip';
+      chip.innerHTML = `${v} <button title="Remove" aria-label="Remove ${v}">&times;</button>`;
+      chip.querySelector('button').addEventListener('click',()=>{
+        const i=emails.indexOf(v); if(i>-1) emails.splice(i,1);
+        emailChips.removeChild(chip);
+      });
+      emailChips.insertBefore(chip,emailInput);
+      emailInput.value='';
+    }
+    emailInput.addEventListener('keydown',e=>{
+      if(e.key==='Enter' || e.key===','){ e.preventDefault(); addEmailChip(emailInput.value.replace(',','')); }
+    });
+    emailInput.addEventListener('blur',()=>addEmailChip(emailInput.value));
+
+    // Mode & schedule
+    $$('input[name="mode"]').forEach(r=>r.addEventListener('change',()=>{
+      scheduleBox.style.display = $('input[name="mode"][value="schedule"]').checked ? 'block':'none';
+    }));
+    scheduleType.addEventListener('change',()=>{
+      onceBox.style.display='none'; dailyBox.style.display='none'; weeklyBox.style.display='none';
+      if(scheduleType.value==='once') onceBox.style.display='block';
+      if(scheduleType.value==='daily') dailyBox.style.display='block';
+      if(scheduleType.value==='weekly') weeklyBox.style.display='block';
+    });
+
+    // Defaults
+    try{
+      const d=new Date(Date.now()+2*60*1000); d.setSeconds(0,0);
+      const p=n=>String(n).padStart(2,'0');
+      runAt.value=`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+      dailyTime.value='19:00';
+      weeklyTime.value='19:00';
+    }catch{}
+
+    scheduleBtn.addEventListener('click',()=>{
+      $('input[name="mode"][value="schedule"]').checked=true;
+      scheduleBox.style.display='block';
+      runFormSubmit(true);
+    });
+    resetBtn.addEventListener('click',()=>{
+      runAll.checked=false; suiteBoxes.forEach(b=>{b.checked=false; b.disabled=false;});
+      emails.splice(0,emails.length); $$('.chip',emailChips).forEach(c=>c.remove());
+      $('input[name="mode"][value="now"]').checked=true; scheduleBox.style.display='none';
+    });
+
+    // Submit
+    $('#launcher').addEventListener('submit', (e)=>{ e.preventDefault(); runFormSubmit(false); });
+
+    async function runFormSubmit(forceSchedule){
+      if(!runAll.checked && suiteBoxes.every(b=>!b.checked)) return toastMsg('Pick at least one suite', true);
+      if(emails.length===0) return toastMsg('Add at least one recipient', true);
+
+      const scheduleSelected = forceSchedule || $('input[name="mode"][value="schedule"]').checked;
+      let schedule=null;
+      if(scheduleSelected){
+        if(scheduleType.value==='once'){
+          if(!runAt.value) return toastMsg('Choose date & time', true);
+          schedule={type:'once', at:new Date(runAt.value).toISOString()};
+        }else if(scheduleType.value==='daily'){
+          if(!dailyTime.value) return toastMsg('Choose daily time', true);
+          schedule={type:'daily', time:dailyTime.value};
+        }else{
+          const days=$$('#weeklyBox input[type="checkbox"]:checked').map(x=>x.value);
+          if(!weeklyTime.value || days.length===0) return toastMsg('Pick weekly time and days', true);
+          schedule={type:'weekly', time:weeklyTime.value, days};
+        }
+      }
+
+      const suites = runAll.checked
+        ? { RUN_ALL:true }
+        : Object.fromEntries(suiteBoxes.filter(b=>b.checked).map(b=>[b.name,true]));
+
+      const payload = {
+        mode: scheduleSelected ? 'schedule' : 'now',
+        suites,
+        emails,
+        schedule
+      };
+
+      try{
+        toastMsg('Submitting…');
+        const res = await fetch('/trigger', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(payload)
+        });
+        const txt = await res.text();
+        toastMsg(res.ok ? ('✅ '+txt) : ('❌ '+txt), !res.ok);
+      }catch(err){
+        toastMsg('❌ Could not reach backend: ' + (err?.message||err), true);
+      }
+    }
+
+    function toastMsg(msg,isErr=false){
+      toast.style.display='block';
+      toast.style.color=isErr?'#b91c1c':'#065f46';
+      toast.textContent=msg;
+      setTimeout(()=>toast.style.display='none',4200);
+    }
+  </script>
+</body>
+</html>
