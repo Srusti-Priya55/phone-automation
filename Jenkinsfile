@@ -1,11 +1,9 @@
 pipeline {
   agent any
 
-  // ---------- PARAMETERS ----------
   parameters {
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all suites')
 
-    // keep names EXACTLY like in wdio.conf.ts suites
     booleanParam(name: 'install_adb', defaultValue: false, description: '')
     booleanParam(name: 'install_play', defaultValue: false, description: '')
     booleanParam(name: 'aggregation_check', defaultValue: false, description: '')
@@ -15,7 +13,6 @@ pipeline {
     booleanParam(name: 'collection_mode_trusted', defaultValue: false, description: '')
     booleanParam(name: 'collection_mode_untrusted', defaultValue: false, description: '')
     booleanParam(name: 'interface_info', defaultValue: false, description: '')
-
     booleanParam(name: 'ipfix_disable', defaultValue: false, description: '')
     booleanParam(name: 'ipfix_zero', defaultValue: false, description: '')
     booleanParam(name: 'parent_process_check', defaultValue: false, description: '')
@@ -31,9 +28,7 @@ pipeline {
 
   stages {
     stage('Checkout') {
-      steps {
-        checkout scm
-      }
+      steps { checkout scm }
     }
 
     stage('Show selections') {
@@ -48,33 +43,26 @@ pipeline {
             'negatives'
           ].join(',')
 
-          // compute CHOSEN list
           def allSuites = env.ALL_SUITES.split(',')
           def picked = []
-          if (params.RUN_ALL) {
-            picked = allSuites
-          } else {
-            allSuites.each { s -> if (params[s]) picked << s }
-          }
-          env.CHOSEN = picked.join(',')
+          if (params.RUN_ALL) picked = allSuites
+          else allSuites.each { s -> if (params[s]) picked << s }
 
+          env.CHOSEN = picked.join(',')
           echo "RUN_ALL: ${params.RUN_ALL}"
           echo "Suites chosen: ${env.CHOSEN}"
           echo "EMAILS: ${params.EMAILS}"
-
-          if (!env.CHOSEN?.trim()) {
-            error "No suites selected — pick at least one or enable RUN_ALL"
-          }
+          if (!env.CHOSEN?.trim()) error "No suites selected — pick at least one or enable RUN_ALL"
         }
       }
     }
 
     stage('Clean previous reports') {
       steps {
-        // remove old allure artifacts (Windows safe)
         bat '''
         if exist allure-results rmdir /s /q allure-results
         if exist allure-report  rmdir /s /q allure-report
+        if exist allure-report.zip del /f /q allure-report.zip
         '''
       }
     }
@@ -84,7 +72,6 @@ pipeline {
         bat '''
         call node -v
         if errorlevel 1 ( echo "Node.js not found in PATH" & exit /b 1 )
-
         call npm ci
         if errorlevel 1 exit /b 1
         '''
@@ -94,18 +81,15 @@ pipeline {
     stage('Run suites sequentially (with CURRENT_FLOW)') {
       steps {
         script {
-          // map each suite to the "flow" label you want to see in Allure
           def FLOW_MAP = [
             'install_adb'                : 'Install via ADB',
             'install_play'               : 'Install via Play Store',
             'aggregation_check'          : 'Aggregation Check',
             'tnd_check'                  : 'TND Check',
-
             'collection_mode_all'        : 'Collection Mode - All',
             'collection_mode_trusted'    : 'Collection Mode - Trusted',
             'collection_mode_untrusted'  : 'Collection Mode - Untrusted',
             'interface_info'             : 'Interface Info',
-
             'ipfix_disable'              : 'IPFIX Disable',
             'ipfix_zero'                 : 'IPFIX Zero',
             'parent_process_check'       : 'Parent Process Check',
@@ -114,43 +98,54 @@ pipeline {
             'aup_should_displayed'       : 'AUP Should Display',
             'aup_should_not_displayed'   : 'AUP Should NOT Display',
             'eula_not_accepted'          : 'EULA Not Accepted',
-            'negatives'                   : 'Negatives'
+            'negatives'                  : 'Negatives'
           ]
 
           def suites = env.CHOSEN.split(',').findAll { it?.trim() }
           for (String s in suites) {
-            def flowName = FLOW_MAP.get(s, s)    // default to suite name if not found
+            def flowName = FLOW_MAP.get(s, s)
             echo "========== RUNNING: ${s}  [FLOW=${flowName}] =========="
-
             withEnv(["CURRENT_FLOW=${flowName}"]) {
-              // run ONE suite at a time so the flow label stays accurate per test file
-              bat "npx wdio run wdio.conf.ts --suite ${s}"
+              // If one suite fails, continue to the next but mark pipeline as FAILURE
+              catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                bat "npx wdio run wdio.conf.ts --suite ${s}"
+              }
             }
           }
         }
       }
     }
-
-    stage('Build Allure report') {
-      steps {
-        bat 'npx allure generate --clean allure-results -o allure-report'
-      }
-    }
-
-    stage('Zip Allure report') {
-      steps {
-        powershell '''
-          if (Test-Path allure-report.zip) { Remove-Item allure-report.zip -Force }
-          Compress-Archive -Path "allure-report/*" -DestinationPath "allure-report.zip"
-        '''
-      }
-    }
   }
 
+  /* -------- ALWAYS build & email a report, even if tests failed -------- */
   post {
     always {
+      // Build Allure (if allure-results exists); otherwise create a tiny fallback report
+      bat '''
+      if exist allure-results (
+        echo Generating Allure report...
+        npx allure generate --clean allure-results -o allure-report
+      ) else (
+        echo No allure-results found. Creating minimal fallback report...
+        mkdir allure-report
+        > allure-report\\index.html echo ^<html^><body^><h3^>No allure-results were produced.^</h3^>^<p^>Check console log.^</p^>^</body^>^</html^>
+      )
+      '''
+
+      // ZIP (always produce a zip; if report is minimal, it still zips that)
+      powershell '''
+        if (Test-Path allure-report.zip) { Remove-Item allure-report.zip -Force }
+        if (-not (Test-Path allure-report)) {
+          New-Item -ItemType Directory -Path allure-report | Out-Null
+          Set-Content -Path "allure-report/README.txt" -Value "No report generated. See Jenkins console."
+        }
+        Compress-Archive -Path "allure-report/*" -DestinationPath "allure-report.zip"
+      '''
+
+      // Archive to Jenkins
       archiveArtifacts artifacts: 'allure-results/**, allure-report/**, allure-report.zip', fingerprint: true
 
+      // Email ZIP regardless of success/failure
       script {
         if (params.EMAILS?.trim()) {
           emailext(
@@ -158,16 +153,17 @@ pipeline {
             subject: "Mobile Automation • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
             body: """Hi,
 
-Mobile Automation run completed.
-
+Mobile Automation run completed with result: ${currentBuild.currentResult}
 Build URL: ${env.BUILD_URL}
-Result: ${currentBuild.currentResult}
 
-Attached: allure-report.zip (open index.html inside to view the earlier report).
+The Allure (earlier) report is attached as a ZIP.
+Open index.html inside the ZIP to view it.
 """,
             attachmentsPattern: 'allure-report.zip',
             mimeType: 'text/plain'
           )
+        } else {
+          echo 'EMAILS not provided; skipping email.'
         }
       }
     }
