@@ -4,7 +4,7 @@ pipeline {
   parameters {
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all suites')
 
-    // --- Suite switches (names must match wdio.conf.ts -> suites keys) ---
+    // Suite switches (must match wdio.conf.ts -> suites keys)
     booleanParam(name: 'install_adb',                defaultValue: false, description: '')
     booleanParam(name: 'install_play',               defaultValue: false, description: '')
     booleanParam(name: 'aggregation_check',          defaultValue: false, description: '')
@@ -23,7 +23,6 @@ pipeline {
     booleanParam(name: 'eula_not_accepted',          defaultValue: false, description: '')
     booleanParam(name: 'negatives',                  defaultValue: false, description: '')
 
-    // --- Email recipients ---
     string(name: 'EMAILS', defaultValue: '', description: 'Recipients (comma-separated)')
   }
 
@@ -58,13 +57,13 @@ pipeline {
         if exist allure-results rmdir /s /q allure-results
         if exist allure-report  rmdir /s /q allure-report
 
-        :: our own standalone/light copies
+        :: our standalone/light copies (separate from plugin output)
         if exist allure-report-standalone  rmdir /s /q allure-report-standalone
         if exist allure-report-light       rmdir /s /q allure-report-light
 
         if exist allure-report.zip del /f /q allure-report.zip
         if exist allure-report-light.zip del /f /q allure-report-light.zip
-        if exist allure-report.light.allurezip del /f /q allure-report.light.allurezip
+        if exist allure-report.light.bin del /f /q allure-report.light.bin
         '''
       }
     }
@@ -129,7 +128,7 @@ pipeline {
 
   post {
     always {
-      // 1) Publish Allure sidebar link (uses Jenkins plugin)
+      // 1) Publish Allure sidebar link (plugin). Do NOT delete allure-report afterwards.
       script {
         try {
           if (fileExists('allure-results')) {
@@ -142,19 +141,21 @@ pipeline {
         }
       }
 
-      // 2) Generate a FULL standalone HTML copy (do NOT touch plugin's allure-report)
+      // 2) Generate a FULL standalone copy (separate folder, safe for zipping)
       bat '''
       echo Generating Allure report (standalone copy)...
       if exist allure-report-standalone rmdir /s /q allure-report-standalone
       npx allure generate --clean allure-results -o allure-report-standalone
       '''
 
-      // 3) Make a LIGHT copy without screenshots/attachments (for smaller email)
+      // 3) Make a LIGHT copy (remove attachments) to keep email small and Gmail-safe
       powershell '''
         try {
           if (Test-Path "allure-report-light") { Remove-Item -Recurse -Force "allure-report-light" }
           New-Item -ItemType Directory -Path "allure-report-light" | Out-Null
           Copy-Item -Path "allure-report-standalone\\*" -Destination "allure-report-light" -Recurse -Force
+
+          # Drop heavy screenshots/attachments
           if (Test-Path "allure-report-light\\data\\attachments") {
             Remove-Item -Recurse -Force "allure-report-light\\data\\attachments"
           }
@@ -163,44 +164,53 @@ pipeline {
         }
       '''
 
-      // 4) Zip both copies; duplicate the light zip to .allurezip (Gmail-safe)
+      // 4) Zip copies; send LIGHT as .bin (Gmail is happier with non-zip extensions)
       powershell '''
         try {
           if (Test-Path "allure-report.zip") { Remove-Item "allure-report.zip" -Force }
           if (Test-Path "allure-report-light.zip") { Remove-Item "allure-report-light.zip" -Force }
-          if (Test-Path "allure-report.light.allurezip") { Remove-Item "allure-report.light.allurezip" -Force }
+          if (Test-Path "allure-report.light.bin") { Remove-Item "allure-report.light.bin" -Force }
 
           Compress-Archive -Path "allure-report-standalone/*" -DestinationPath "allure-report.zip"
           Compress-Archive -Path "allure-report-light/*"      -DestinationPath "allure-report-light.zip"
 
-          Copy-Item "allure-report-light.zip" "allure-report.light.allurezip" -Force
+          # duplicate to .bin so recipients can rename to .zip
+          Copy-Item "allure-report-light.zip" "allure-report.light.bin" -Force
+
+          # Print sizes for debug
+          $f1 = (Get-Item "allure-report.zip").Length
+          $f2 = (Get-Item "allure-report-light.zip").Length
+          $f3 = (Get-Item "allure-report.light.bin").Length
+          Write-Host ("Sizes -> full:{0}B light:{1}B email:{2}B" -f $f1,$f2,$f3)
         } catch {
           Write-Host "Zipping/rename step failed (non-fatal): $($_.Exception.Message)"
         }
       '''
 
-      // 5) Archive everything so you can download from Jenkins
-      archiveArtifacts artifacts: 'allure-results/**, allure-report/**, allure-report-standalone/**, allure-report-light/**, allure-report.zip, allure-report-light.zip, allure-report.light.allurezip', fingerprint: true
+      // 5) Archive artifacts (so you can always download from Jenkins)
+      archiveArtifacts artifacts: 'allure-results/**, allure-report/**, allure-report-standalone/**, allure-report-light/**, allure-report.zip, allure-report-light.zip, allure-report.light.bin', fingerprint: true
 
-      // 6) Email the LIGHT offline copy (won't be blocked by Gmail)
+      // 6) Email LIGHT offline report (attach .bin). Don't fail build if Gmail rejects.
       script {
         if (params.EMAILS?.trim()) {
           catchError(buildResult: currentBuild.currentResult, stageResult: 'FAILURE') {
             emailext(
-              from: 'YOUR_GMAIL_ADDRESS_HERE',  // <-- set to your Gmail SMTP username
+              from: 'YOUR_GMAIL_ADDRESS_HERE',  // must match your SMTP Gmail user
               to: params.EMAILS,
               subject: "Mobile Automation • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
               mimeType: 'text/plain',
               body: """Result: ${currentBuild.currentResult}
 
-Offline Allure report attached (LIGHT version; fresh run only):
-1) Download: allure-report.light.allurezip
-2) Rename to: allure-report.zip
-3) Extract and open: index.html
+Allure (Jenkins link): open the **Allure Report** link on the build page.
 
-Full report is archived in Jenkins as 'allure-report.zip'.
+Offline copy attached (LIGHT):
+1) Download: allure-report.light.bin
+2) Rename to: allure-report.zip
+3) Extract, open: index.html
+
+Full report also archived in Jenkins as 'allure-report.zip'.
 """,
-              attachmentsPattern: 'allure-report.light.allurezip'
+              attachmentsPattern: 'allure-report.light.bin'
             )
           }
         } else {
