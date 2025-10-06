@@ -58,6 +58,7 @@ pipeline {
         if exist allure-report-light rmdir /s /q allure-report-light
         if exist allure-report.zip del /f /q allure-report.zip
         if exist allure-report.light.allurezip del /f /q allure-report.light.allurezip
+        if exist allure-report-light.zip del /f /q allure-report-light.zip
         '''
       }
     }
@@ -99,7 +100,7 @@ pipeline {
             def flow = FLOW.get(suite, suite)
             echo "=== RUNNING ${suite} [FLOW=${flow}] ==="
             withEnv(["CURRENT_FLOW=${flow}"]) {
-              // Continue even if a suite fails; post { always } will still run
+              // Continue even if a suite fails; post { always } still runs
               catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                 bat "npx wdio run wdio.conf.ts --suite ${suite}"
               }
@@ -143,16 +144,12 @@ pipeline {
       npx allure generate --clean allure-results -o allure-report
       '''
 
-      // Create LIGHT copy WITHOUT attachments (no robocopy; pure PowerShell to avoid non-zero exit codes)
+      // Create LIGHT copy WITHOUT attachments (pure PowerShell, no robocopy)
       powershell '''
         try {
           if (Test-Path "allure-report-light") { Remove-Item -Recurse -Force "allure-report-light" }
           New-Item -ItemType Directory -Path "allure-report-light" | Out-Null
-
-          # Copy everything
           Copy-Item -Path "allure-report\\*" -Destination "allure-report-light" -Recurse -Force
-
-          # Remove heavy attachments from the light copy
           if (Test-Path "allure-report-light\\data\\attachments") {
             Remove-Item -Recurse -Force "allure-report-light\\data\\attachments"
           }
@@ -161,40 +158,43 @@ pipeline {
         }
       '''
 
-      // Zip FULL and LIGHT variants
+      // Zip FULL and LIGHT; then duplicate LIGHT to .allurezip (Gmail-safe)
       powershell '''
         try {
           if (Test-Path "allure-report.zip") { Remove-Item "allure-report.zip" -Force }
+          if (Test-Path "allure-report-light.zip") { Remove-Item "allure-report-light.zip" -Force }
           if (Test-Path "allure-report.light.allurezip") { Remove-Item "allure-report.light.allurezip" -Force }
 
           Compress-Archive -Path "allure-report/*" -DestinationPath "allure-report.zip"
-          Compress-Archive -Path "allure-report-light/*" -DestinationPath "allure-report.light.allurezip"
+          Compress-Archive -Path "allure-report-light/*" -DestinationPath "allure-report-light.zip"
+
+          # Make a Gmail-safe copy by renaming the light zip
+          Copy-Item "allure-report-light.zip" "allure-report.light.allurezip" -Force
         } catch {
-          Write-Host "Zipping step failed (non-fatal): $($_.Exception.Message)"
+          Write-Host "Zipping/rename step failed (non-fatal): $($_.Exception.Message)"
         }
       '''
 
       // Archive artifacts (always)
-      archiveArtifacts artifacts: 'allure-results/**, allure-report/**, allure-report.zip, allure-report-light/**, allure-report.light.allurezip', fingerprint: true
+      archiveArtifacts artifacts: 'allure-results/**, allure-report/**, allure-report.zip, allure-report-light/**, allure-report-light.zip, allure-report.light.allurezip', fingerprint: true
 
-      // Email LIGHT attachment (Gmail-safe); never fail the build if email fails
+      // Email LIGHT attachment (Gmail-safe); do not fail build if email fails
       script {
         if (params.EMAILS?.trim()) {
           catchError(buildResult: currentBuild.currentResult, stageResult: 'FAILURE') {
             emailext(
-              from: 'kencholsrusti@gmail.com',  // set to your Gmail SMTP username
+              from: 'kencholsrusti@gmail.com',  // your Gmail SMTP username
               to: params.EMAILS,
               subject: "Mobile Automation • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
               mimeType: 'text/plain',
               body: """Result: ${currentBuild.currentResult}
-Build: ${env.BUILD_URL}
 
-Online report (Jenkins): use the **Allure Report** link on the build page.
-
-Offline report attached (light; fresh run only):
+Offline report attached (LIGHT version; fresh run only):
 1) Download: allure-report.light.allurezip
 2) Rename to: allure-report.zip
 3) Extract and open: index.html
+
+NOTE: The full report (with screenshots) is archived in Jenkins as 'allure-report.zip'.
 """,
               attachmentsPattern: 'allure-report.light.allurezip'
             )
