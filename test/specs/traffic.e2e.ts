@@ -6,8 +6,9 @@ const YT_PKG     = 'com.google.android.youtube'
 const MAPS_PKG   = 'com.google.android.apps.maps'
 const GMAIL_PKG  = 'com.google.android.gm'
 const STORE_PKG  = 'com.android.vending'
+const FLOW = process.env.CURRENT_FLOW || 'Adhoc';
 
-describe('Traffic generation', () => {
+describe(`${FLOW}-Traffic generation`, () => {
   it('opens multiple apps and sites to generate traffic', async () => {
     // ----- Chrome traffic -----
     await openInChrome('https://www.cnn.com/')

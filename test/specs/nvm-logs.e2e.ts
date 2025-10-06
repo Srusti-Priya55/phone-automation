@@ -7,6 +7,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 
 const exec = promisify(_exec)
+const FLOW = process.env.CURRENT_FLOW || 'Adhoc';
 
 async function runCmd(cmd: string) {
   const wrapped = process.platform === 'win32' ? `cmd /c ${cmd}` : cmd
@@ -49,7 +50,7 @@ export async function captureNvmLogsSnapshot(
   await saveAndAttach(logs, `NVM logs (last ${lines} lines, filter="${filter}")`)
 }
 
-describe('NVM logs snapshot', () => {
+describe(`${FLOW}-NVM logs snapshot`, () => {
   it('captures and attaches filtered NVM logs to Allure', async () => {
     await captureNvmLogsSnapshot(8000, 'nvmagent')
   })

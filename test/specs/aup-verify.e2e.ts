@@ -1,7 +1,8 @@
 import { expect } from '@wdio/globals'
 import allure from '@wdio/allure-reporter'
+const FLOW = process.env.CURRENT_FLOW || 'Adhoc';
 
-describe('NVM AUP notification', () => {
+describe(`${FLOW}-NVM AUP notification`, () => {
   it('opens the shade, expands if needed, taps AUP row, waits, screenshots, closes', async () => {
     // 1) Open notifications
     await driver.openNotifications()

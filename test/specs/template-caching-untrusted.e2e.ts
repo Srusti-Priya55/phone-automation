@@ -161,7 +161,7 @@ async function openAppFromDrawer(appName: string, pageLimit = 8): Promise<boolea
 }
 
 
-describe(`${FLOW} - Push Untrusted and Register NVM Profile`, () => {
+describe(`${FLOW} - Template caching untrusted`, () => {
   const PROFILE_LOCAL  = path.resolve(__dirname, '../../apps/nap_json4.txt')
   const PROFILE_REMOTE = '/sdcard/nap_json4.txt'
   const APP_LABEL      = 'Knox SDK Test Tool'

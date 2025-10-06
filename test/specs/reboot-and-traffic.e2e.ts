@@ -7,9 +7,10 @@ const CHROME_PKG = 'com.android.chrome'
 // make the test own its timeout so it never trips the 90s suite setting
 const TEST_TIMEOUT_MS = 10 * 60_000   // 10 min hard ceiling for the whole test
 const READY_BUDGET_MS = 6 * 60_000    // up to 6 min to get back after reboot
-const STEP_PAUSE = 3200               // tiny think time between URL hits
+const STEP_PAUSE = 3200      
+const FLOW = process.env.CURRENT_FLOW || 'Adhoc';         // tiny think time between URL hits
 
-describe('Traffic generation with reboot', function () {
+describe(`${FLOW}Traffic generation with reboot`, function () {
   this.timeout(TEST_TIMEOUT_MS)
 
   it('generates traffic, reboots device, then generates traffic again', async () => {

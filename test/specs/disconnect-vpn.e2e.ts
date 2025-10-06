@@ -2,10 +2,11 @@
 import { driver } from '@wdio/globals'
 import { step } from '../utils/report'
 import allure from '@wdio/allure-reporter'
+const FLOW = process.env.CURRENT_FLOW || 'Adhoc';
 
 const APP_PKG = 'com.cisco.anyconnect.vpn.android.avf'
 
-describe('Disconnect VPN flow', () => {
+describe(`${FLOW}-Disconnect VPN flow`, () => {
   it('should disconnect VPN from Cisco Secure Client', async () => {
     await step('Bring Cisco Secure Client to foreground', async () => {
       const pkg = await driver.getCurrentPackage().catch(() => '')

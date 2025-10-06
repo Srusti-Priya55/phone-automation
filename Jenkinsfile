@@ -73,7 +73,7 @@ pipeline {
       }
     }
 
-    stage('Run selected suites') {
+    stage('Run selected suites (sequential with CURRENT_FLOW)') {
       steps {
         script {
           def FLOW = [
@@ -99,6 +99,7 @@ pipeline {
             def flow = FLOW.get(suite, suite)
             echo "=== RUNNING ${suite} [FLOW=${flow}] ==="
             withEnv(["CURRENT_FLOW=${flow}"]) {
+              // Continue even if a suite fails; post { always } will still run
               catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                 bat "npx wdio run wdio.conf.ts --suite ${suite}"
               }
@@ -121,57 +122,83 @@ pipeline {
 
   post {
     always {
-      // Generate and publish reports
+      // Publish Allure link (plugin)
       script {
-        if (fileExists('allure-results')) {
-          allure(results: [[path: 'allure-results']])
-        } else {
-          echo 'No allure-results to publish.'
+        try {
+          if (fileExists('allure-results')) {
+            allure(results: [[path: 'allure-results']])
+          } else {
+            echo 'No allure-results to publish.'
+          }
+        } catch (err) {
+          echo "Allure publish step failed (non-fatal): ${err}"
         }
       }
 
+      // Generate FULL static report
       bat '''
-      echo Generating new Allure report...
+      echo Generating Allure report (full)...
       if exist allure-report rmdir /s /q allure-report
       if exist allure-report.zip del /f /q allure-report.zip
       npx allure generate --clean allure-results -o allure-report
       '''
 
-      // Create light copy (no screenshots) for email
+      // Create LIGHT copy WITHOUT attachments (no robocopy; pure PowerShell to avoid non-zero exit codes)
       powershell '''
-        if (Test-Path allure-report-light) { Remove-Item -Recurse -Force allure-report-light }
-        New-Item -ItemType Directory -Path allure-report-light | Out-Null
-        robocopy "allure-report" "allure-report-light" /E /XD "allure-report\\data\\attachments" | Out-Null
+        try {
+          if (Test-Path "allure-report-light") { Remove-Item -Recurse -Force "allure-report-light" }
+          New-Item -ItemType Directory -Path "allure-report-light" | Out-Null
+
+          # Copy everything
+          Copy-Item -Path "allure-report\\*" -Destination "allure-report-light" -Recurse -Force
+
+          # Remove heavy attachments from the light copy
+          if (Test-Path "allure-report-light\\data\\attachments") {
+            Remove-Item -Recurse -Force "allure-report-light\\data\\attachments"
+          }
+        } catch {
+          Write-Host "Light copy step failed (non-fatal): $($_.Exception.Message)"
+        }
       '''
 
+      // Zip FULL and LIGHT variants
       powershell '''
-        if (Test-Path allure-report.zip) { Remove-Item allure-report.zip -Force }
-        if (Test-Path allure-report.light.allurezip) { Remove-Item allure-report.light.allurezip -Force }
-        Compress-Archive -Path "allure-report/*" -DestinationPath "allure-report.zip"
-        Compress-Archive -Path "allure-report-light/*" -DestinationPath "allure-report.light.allurezip"
+        try {
+          if (Test-Path "allure-report.zip") { Remove-Item "allure-report.zip" -Force }
+          if (Test-Path "allure-report.light.allurezip") { Remove-Item "allure-report.light.allurezip" -Force }
+
+          Compress-Archive -Path "allure-report/*" -DestinationPath "allure-report.zip"
+          Compress-Archive -Path "allure-report-light/*" -DestinationPath "allure-report.light.allurezip"
+        } catch {
+          Write-Host "Zipping step failed (non-fatal): $($_.Exception.Message)"
+        }
       '''
 
+      // Archive artifacts (always)
       archiveArtifacts artifacts: 'allure-results/**, allure-report/**, allure-report.zip, allure-report-light/**, allure-report.light.allurezip', fingerprint: true
 
+      // Email LIGHT attachment (Gmail-safe); never fail the build if email fails
       script {
         if (params.EMAILS?.trim()) {
-          emailext(
-            from: 'kencholsrusti@gmail.com',
-            to: params.EMAILS,
-            subject: "Mobile Automation • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
-            mimeType: 'text/plain',
-            body: """Result: ${currentBuild.currentResult}
+          catchError(buildResult: currentBuild.currentResult, stageResult: 'FAILURE') {
+            emailext(
+              from: 'kencholsrusti@gmail.com',  // set to your Gmail SMTP username
+              to: params.EMAILS,
+              subject: "Mobile Automation • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
+              mimeType: 'text/plain',
+              body: """Result: ${currentBuild.currentResult}
 Build: ${env.BUILD_URL}
 
-Online report: open the Allure Report link on Jenkins.
+Online report (Jenkins): use the **Allure Report** link on the build page.
 
-Offline report attached (light version, fresh screenshots only):
-1. Download: allure-report.light.allurezip
-2. Rename to: allure-report.zip
-3. Extract → open index.html
+Offline report attached (light; fresh run only):
+1) Download: allure-report.light.allurezip
+2) Rename to: allure-report.zip
+3) Extract and open: index.html
 """,
-            attachmentsPattern: 'allure-report.light.allurezip'
-          )
+              attachmentsPattern: 'allure-report.light.allurezip'
+            )
+          }
         } else {
           echo 'EMAILS not provided — skipping email.'
         }
