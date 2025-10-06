@@ -2,28 +2,30 @@ pipeline {
   agent any
 
   parameters {
+    // master switch
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all suites')
 
-    booleanParam(name: 'install_adb', defaultValue: false, description: '')
-    booleanParam(name: 'install_play', defaultValue: false, description: '')
-    booleanParam(name: 'aggregation_check', defaultValue: false, description: '')
-    booleanParam(name: 'tnd_check', defaultValue: false, description: '')
-
-    booleanParam(name: 'collection_mode_all', defaultValue: false, description: '')
-    booleanParam(name: 'collection_mode_trusted', defaultValue: false, description: '')
-    booleanParam(name: 'collection_mode_untrusted', defaultValue: false, description: '')
-    booleanParam(name: 'interface_info', defaultValue: false, description: '')
-    booleanParam(name: 'ipfix_disable', defaultValue: false, description: '')
-    booleanParam(name: 'ipfix_zero', defaultValue: false, description: '')
-    booleanParam(name: 'parent_process_check', defaultValue: false, description: '')
+    // suites (exact keys must match wdio.conf.ts -> suites)
+    booleanParam(name: 'install_adb',                defaultValue: false, description: '')
+    booleanParam(name: 'install_play',               defaultValue: false, description: '')
+    booleanParam(name: 'aggregation_check',          defaultValue: false, description: '')
+    booleanParam(name: 'tnd_check',                  defaultValue: false, description: '')
+    booleanParam(name: 'collection_mode_all',        defaultValue: false, description: '')
+    booleanParam(name: 'collection_mode_trusted',    defaultValue: false, description: '')
+    booleanParam(name: 'collection_mode_untrusted',  defaultValue: false, description: '')
+    booleanParam(name: 'interface_info',             defaultValue: false, description: '')
+    booleanParam(name: 'ipfix_disable',              defaultValue: false, description: '')
+    booleanParam(name: 'ipfix_zero',                 defaultValue: false, description: '')
+    booleanParam(name: 'parent_process_check',       defaultValue: false, description: '')
     booleanParam(name: 'template_caching_untrusted', defaultValue: false, description: '')
-    booleanParam(name: 'before_after_reboot', defaultValue: false, description: '')
-    booleanParam(name: 'aup_should_displayed', defaultValue: false, description: '')
-    booleanParam(name: 'aup_should_not_displayed', defaultValue: false, description: '')
-    booleanParam(name: 'eula_not_accepted', defaultValue: false, description: '')
-    booleanParam(name: 'negatives', defaultValue: false, description: '')
+    booleanParam(name: 'before_after_reboot',        defaultValue: false, description: '')
+    booleanParam(name: 'aup_should_displayed',       defaultValue: false, description: '')
+    booleanParam(name: 'aup_should_not_displayed',   defaultValue: false, description: '')
+    booleanParam(name: 'eula_not_accepted',          defaultValue: false, description: '')
+    booleanParam(name: 'negatives',                  defaultValue: false, description: '')
 
-    string(name: 'EMAILS', defaultValue: '', description: 'comma-separated recipients')
+    // comma-separated list (e.g. "a@x.com,b@y.com")
+    string(name: 'EMAILS', defaultValue: '', description: 'Recipients (comma-separated)')
   }
 
   stages {
@@ -43,7 +45,7 @@ pipeline {
             'negatives'
           ]
           def chosen = params.RUN_ALL ? all : all.findAll { params[it] }
-          if (!chosen) error 'No suites selected'
+          if (!chosen) error 'No suites selected — pick at least one or enable RUN_ALL'
           env.CHOSEN = chosen.join(',')
           echo "Suites: ${env.CHOSEN}"
         }
@@ -56,6 +58,7 @@ pipeline {
         if exist allure-results rmdir /s /q allure-results
         if exist allure-report  rmdir /s /q allure-report
         if exist allure-report.zip del /f /q allure-report.zip
+        if exist allure-report.allurezip del /f /q allure-report.allurezip
         '''
       }
     }
@@ -71,7 +74,7 @@ pipeline {
       }
     }
 
-    stage('Run suites (sequential with CURRENT_FLOW)') {
+    stage('Run suites (sequential, with CURRENT_FLOW)') {
       steps {
         script {
           def FLOW = [
@@ -93,12 +96,11 @@ pipeline {
             'eula_not_accepted':'EULA Not Accepted',
             'negatives':'Negatives'
           ]
-
           for (suite in env.CHOSEN.split(',')) {
             def flow = FLOW.get(suite, suite)
             echo "=== RUNNING ${suite} [FLOW=${flow}] ==="
             withEnv(["CURRENT_FLOW=${flow}"]) {
-              // continue even if a suite fails
+              // Continue even if a suite fails; pipeline result becomes FAILURE but post{always} still runs
               catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                 bat "npx wdio run wdio.conf.ts --suite ${suite}"
               }
@@ -107,55 +109,75 @@ pipeline {
         }
       }
     }
+
+    // Debug stage: shows whether WDIO actually produced Allure JSONs
+    stage('Check allure-results') {
+      steps {
+        bat '''
+          echo ===== contents of allure-results =====
+          if exist allure-results ( dir /b allure-results ) else ( echo NO allure-results FOLDER )
+          echo =====================================
+        '''
+      }
+    }
   }
 
   post {
     always {
-      // 1) Publish Allure in Jenkins (needs Allure Jenkins plugin)
-      //    This creates the clickable "Allure Report" link on the build.
+      // 1) Publish Allure link on the build page (requires Allure Jenkins Plugin)
       script {
         if (fileExists('allure-results')) {
-          allure(results: [[path: 'allure-results']])   // <-- plugin step
+          allure(results: [[path: 'allure-results']])
         } else {
-          echo 'No allure-results found; publishing will be skipped.'
+          echo 'No allure-results to publish.'
         }
       }
 
-      // 2) Also produce a ZIP (so email always has an attachment)
+      // 2) Generate static HTML report folder
       bat '''
+      if exist allure-report rmdir /s /q allure-report
+      if exist allure-report.zip del /f /q allure-report.zip
+
       if exist allure-results (
         npx allure generate --clean allure-results -o allure-report
       ) else (
         mkdir allure-report
-        > allure-report\\index.html echo ^<html^><body^><h3^>No allure-results were produced.^</h3^>^</body^>^</html^>
+        > allure-report\\index.html echo ^<html^><body^><h3^>No allure results were produced.^</h3^>^</body^>^</html^>
       )
       '''
+
+      // 3) Create a normal ZIP and a Gmail-safe copy (.allurezip)
       powershell '''
         if (Test-Path allure-report.zip) { Remove-Item allure-report.zip -Force }
-        if (-not (Test-Path allure-report)) {
-          New-Item -ItemType Directory -Path allure-report | Out-Null
-          Set-Content -Path "allure-report/README.txt" -Value "No report generated. See Jenkins console."
-        }
         Compress-Archive -Path "allure-report/*" -DestinationPath "allure-report.zip"
+        Copy-Item "allure-report.zip" "allure-report.allurezip" -Force
       '''
 
-      archiveArtifacts artifacts: 'allure-results/**, allure-report/**, allure-report.zip', fingerprint: true
+      // 4) Archive everything so it’s always downloadable
+      archiveArtifacts artifacts: 'allure-results/**, allure-report/**, allure-report.zip, allure-report.allurezip', fingerprint: true
 
-      // 3) Email the ZIP, regardless of pass/fail
+      // 5) Email the Gmail-safe file (works outside your network)
       script {
         if (params.EMAILS?.trim()) {
           emailext(
+            from: 'kencholsrusti@gmail.com',  // set to your Gmail SMTP username
             to: params.EMAILS,
             subject: "Mobile Automation • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
+            mimeType: 'text/plain',
             body: """Result: ${currentBuild.currentResult}
-Build:  ${env.BUILD_URL}
+Build page: ${env.BUILD_URL}
 
-The Allure report is attached (ZIP) and also available as a link on this build page.""",
-            attachmentsPattern: 'allure-report.zip',
-            mimeType: 'text/plain'
+Online (LAN) report: open the **Allure Report** link on the build page.
+
+Offline copy attached:
+  1) Download: allure-report.allurezip
+  2) Rename to: allure-report.zip
+  3) Extract and open: index.html
+""",
+            attachmentsPattern: 'allure-report.allurezip'
           )
         } else {
-          echo 'EMAILS empty; skipping email.'
+          echo 'EMAILS not provided; skipping email.'
         }
       }
     }
