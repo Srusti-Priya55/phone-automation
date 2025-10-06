@@ -31,33 +31,26 @@ pipeline {
       steps { checkout scm }
     }
 
-    stage('Show selections') {
+    stage('Select suites') {
       steps {
         script {
-          env.ALL_SUITES = [
+          def all = [
             'install_adb','install_play','aggregation_check','tnd_check',
             'collection_mode_all','collection_mode_trusted','collection_mode_untrusted',
             'interface_info','ipfix_disable','ipfix_zero','parent_process_check',
             'template_caching_untrusted','before_after_reboot',
             'aup_should_displayed','aup_should_not_displayed','eula_not_accepted',
             'negatives'
-          ].join(',')
-
-          def allSuites = env.ALL_SUITES.split(',')
-          def picked = []
-          if (params.RUN_ALL) picked = allSuites
-          else allSuites.each { s -> if (params[s]) picked << s }
-
-          env.CHOSEN = picked.join(',')
-          echo "RUN_ALL: ${params.RUN_ALL}"
-          echo "Suites chosen: ${env.CHOSEN}"
-          echo "EMAILS: ${params.EMAILS}"
-          if (!env.CHOSEN?.trim()) error "No suites selected — pick at least one or enable RUN_ALL"
+          ]
+          def chosen = params.RUN_ALL ? all : all.findAll { params[it] }
+          if (!chosen) error 'No suites selected'
+          env.CHOSEN = chosen.join(',')
+          echo "Suites: ${env.CHOSEN}"
         }
       }
     }
 
-    stage('Clean previous reports') {
+    stage('Clean old reports') {
       steps {
         bat '''
         if exist allure-results rmdir /s /q allure-results
@@ -71,44 +64,43 @@ pipeline {
       steps {
         bat '''
         call node -v
-        if errorlevel 1 ( echo "Node.js not found in PATH" & exit /b 1 )
+        if errorlevel 1 ( echo Node not found & exit /b 1 )
         call npm ci
         if errorlevel 1 exit /b 1
         '''
       }
     }
 
-    stage('Run suites sequentially (with CURRENT_FLOW)') {
+    stage('Run suites (sequential with CURRENT_FLOW)') {
       steps {
         script {
-          def FLOW_MAP = [
-            'install_adb'                : 'Install via ADB',
-            'install_play'               : 'Install via Play Store',
-            'aggregation_check'          : 'Aggregation Check',
-            'tnd_check'                  : 'TND Check',
-            'collection_mode_all'        : 'Collection Mode - All',
-            'collection_mode_trusted'    : 'Collection Mode - Trusted',
-            'collection_mode_untrusted'  : 'Collection Mode - Untrusted',
-            'interface_info'             : 'Interface Info',
-            'ipfix_disable'              : 'IPFIX Disable',
-            'ipfix_zero'                 : 'IPFIX Zero',
-            'parent_process_check'       : 'Parent Process Check',
-            'template_caching_untrusted' : 'Template Caching - Untrusted',
-            'before_after_reboot'        : 'Before/After Reboot',
-            'aup_should_displayed'       : 'AUP Should Display',
-            'aup_should_not_displayed'   : 'AUP Should NOT Display',
-            'eula_not_accepted'          : 'EULA Not Accepted',
-            'negatives'                  : 'Negatives'
+          def FLOW = [
+            'install_adb':'Install via ADB',
+            'install_play':'Install via Play Store',
+            'aggregation_check':'Aggregation Check',
+            'tnd_check':'TND Check',
+            'collection_mode_all':'Collection Mode - All',
+            'collection_mode_trusted':'Collection Mode - Trusted',
+            'collection_mode_untrusted':'Collection Mode - Untrusted',
+            'interface_info':'Interface Info',
+            'ipfix_disable':'IPFIX Disable',
+            'ipfix_zero':'IPFIX Zero',
+            'parent_process_check':'Parent Process Check',
+            'template_caching_untrusted':'Template Caching - Untrusted',
+            'before_after_reboot':'Before/After Reboot',
+            'aup_should_displayed':'AUP Should Display',
+            'aup_should_not_displayed':'AUP Should NOT Display',
+            'eula_not_accepted':'EULA Not Accepted',
+            'negatives':'Negatives'
           ]
 
-          def suites = env.CHOSEN.split(',').findAll { it?.trim() }
-          for (String s in suites) {
-            def flowName = FLOW_MAP.get(s, s)
-            echo "========== RUNNING: ${s}  [FLOW=${flowName}] =========="
-            withEnv(["CURRENT_FLOW=${flowName}"]) {
-              // If one suite fails, continue to the next but mark pipeline as FAILURE
+          for (suite in env.CHOSEN.split(',')) {
+            def flow = FLOW.get(suite, suite)
+            echo "=== RUNNING ${suite} [FLOW=${flow}] ==="
+            withEnv(["CURRENT_FLOW=${flow}"]) {
+              // continue even if a suite fails
               catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                bat "npx wdio run wdio.conf.ts --suite ${s}"
+                bat "npx wdio run wdio.conf.ts --suite ${suite}"
               }
             }
           }
@@ -117,22 +109,27 @@ pipeline {
     }
   }
 
-  /* -------- ALWAYS build & email a report, even if tests failed -------- */
   post {
     always {
-      // Build Allure (if allure-results exists); otherwise create a tiny fallback report
+      // 1) Publish Allure in Jenkins (needs Allure Jenkins plugin)
+      //    This creates the clickable "Allure Report" link on the build.
+      script {
+        if (fileExists('allure-results')) {
+          allure(results: [[path: 'allure-results']])   // <-- plugin step
+        } else {
+          echo 'No allure-results found; publishing will be skipped.'
+        }
+      }
+
+      // 2) Also produce a ZIP (so email always has an attachment)
       bat '''
       if exist allure-results (
-        echo Generating Allure report...
         npx allure generate --clean allure-results -o allure-report
       ) else (
-        echo No allure-results found. Creating minimal fallback report...
         mkdir allure-report
-        > allure-report\\index.html echo ^<html^><body^><h3^>No allure-results were produced.^</h3^>^<p^>Check console log.^</p^>^</body^>^</html^>
+        > allure-report\\index.html echo ^<html^><body^><h3^>No allure-results were produced.^</h3^>^</body^>^</html^>
       )
       '''
-
-      // ZIP (always produce a zip; if report is minimal, it still zips that)
       powershell '''
         if (Test-Path allure-report.zip) { Remove-Item allure-report.zip -Force }
         if (-not (Test-Path allure-report)) {
@@ -142,28 +139,23 @@ pipeline {
         Compress-Archive -Path "allure-report/*" -DestinationPath "allure-report.zip"
       '''
 
-      // Archive to Jenkins
       archiveArtifacts artifacts: 'allure-results/**, allure-report/**, allure-report.zip', fingerprint: true
 
-      // Email ZIP regardless of success/failure
+      // 3) Email the ZIP, regardless of pass/fail
       script {
         if (params.EMAILS?.trim()) {
           emailext(
             to: params.EMAILS,
             subject: "Mobile Automation • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
-            body: """Hi,
+            body: """Result: ${currentBuild.currentResult}
+Build:  ${env.BUILD_URL}
 
-Mobile Automation run completed with result: ${currentBuild.currentResult}
-Build URL: ${env.BUILD_URL}
-
-The Allure (earlier) report is attached as a ZIP.
-Open index.html inside the ZIP to view it.
-""",
+The Allure report is attached (ZIP) and also available as a link on this build page.""",
             attachmentsPattern: 'allure-report.zip',
             mimeType: 'text/plain'
           )
         } else {
-          echo 'EMAILS not provided; skipping email.'
+          echo 'EMAILS empty; skipping email.'
         }
       }
     }
