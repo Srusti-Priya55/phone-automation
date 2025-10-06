@@ -1,9 +1,6 @@
 pipeline {
   agent any
 
-  /***********************
-   * PARAMETERS (17 suites)
-   ***********************/
   parameters {
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all suites')
 
@@ -32,19 +29,13 @@ pipeline {
     string(name: 'EMAILS', defaultValue: '', description: 'Recipients (comma-separated)')
   }
 
-  /***********************
-   * ENV
-   ***********************/
   environment {
-    // Your configured sender is kencholsrusti@gmail.com in Manage Jenkins › Configure System (SMTP)
     NODE_HOME = "C:\\Program Files\\nodejs"
-    PATH = "${env.NODE_HOME};${env.PATH}"
+    PATH      = "${env.NODE_HOME};${env.PATH}"
   }
 
   stages {
-    stage('Checkout') {
-      steps { checkout scm }
-    }
+    stage('Checkout'){ steps { checkout scm } }
 
     stage('Select suites') {
       steps {
@@ -58,7 +49,7 @@ pipeline {
             'negatives'
           ]
           def chosen = params.RUN_ALL ? all : all.findAll { params[it] }
-          if (!chosen) { error 'No suites selected — pick at least one or enable RUN_ALL' }
+          if (!chosen) error 'No suites selected — pick at least one or enable RUN_ALL'
           env.CHOSEN = chosen.join(',')
           echo "Suites selected: ${env.CHOSEN}"
         }
@@ -74,7 +65,8 @@ pipeline {
           if exist allure-report-standalone rmdir /s /q allure-report-standalone
           if exist allure-report-light rmdir /s /q allure-report-light
           if exist allure-report.zip del /f /q allure-report.zip
-          if exist allure-report.light.allurezip del /f /q allure-report.light.allurezip
+          if exist allure-report-light.zip del /f /q allure-report-light.zip
+          if exist allure-report.light.b64 del /f /q allure-report.light.b64
         '''
       }
     }
@@ -93,36 +85,25 @@ pipeline {
     stage('Run suites (sequential with CURRENT_FLOW)') {
       steps {
         script {
-          // Human-readable flow names used by your wdio.beforeTest hook
           def FLOW = [
-            install_adb               : 'Install via ADB',
-            install_play              : 'Install via Play Store',
-            aggregation_check         : 'Aggregation Check',
-            tnd_check                 : 'TND Check',
-
-            collection_mode_all       : 'Collection Mode - All',
-            collection_mode_trusted   : 'Collection Mode - Trusted',
-            collection_mode_untrusted : 'Collection Mode - Untrusted',
-
-            interface_info            : 'Interface Info',
-            ipfix_disable             : 'IPFIX Disable',
-            ipfix_zero                : 'IPFIX Zero',
-            parent_process_check      : 'Parent Process Check',
-            template_caching_untrusted: 'Template Caching - Untrusted',
-            before_after_reboot       : 'Before/After Reboot',
-
-            aup_should_displayed      : 'AUP Should Display',
-            aup_should_not_displayed  : 'AUP Should NOT Display',
-            eula_not_accepted         : 'EULA Not Accepted',
-
-            negatives                 : 'Negatives'
+            install_adb:'Install via ADB', install_play:'Install via Play Store',
+            aggregation_check:'Aggregation Check', tnd_check:'TND Check',
+            collection_mode_all:'Collection Mode - All',
+            collection_mode_trusted:'Collection Mode - Trusted',
+            collection_mode_untrusted:'Collection Mode - Untrusted',
+            interface_info:'Interface Info', ipfix_disable:'IPFIX Disable',
+            ipfix_zero:'IPFIX Zero', parent_process_check:'Parent Process Check',
+            template_caching_untrusted:'Template Caching - Untrusted',
+            before_after_reboot:'Before/After Reboot',
+            aup_should_displayed:'AUP Should Display',
+            aup_should_not_displayed:'AUP Should NOT Display',
+            eula_not_accepted:'EULA Not Accepted',
+            negatives:'Negatives'
           ]
-
           for (suite in env.CHOSEN.split(',')) {
             def flow = FLOW.get(suite, suite)
             echo "=== RUNNING ${suite} [FLOW=${flow}] ==="
             withEnv(["CURRENT_FLOW=${flow}"]) {
-              // continue pipeline even if a suite fails (Allure + email still run)
               catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                 bat "npx wdio run wdio.conf.ts --suite ${suite}"
               }
@@ -143,12 +124,9 @@ pipeline {
     }
   }
 
-  /***********************
-   * POST: publish, package, email
-   ***********************/
   post {
     always {
-      // 1) Publish clickable Allure link in Jenkins (uses plugin)
+      // Jenkins Allure link
       script {
         try {
           if (fileExists('allure-results')) {
@@ -161,16 +139,16 @@ pipeline {
         }
       }
 
-      // 2) Generate full & standalone reports
+      // Generate reports
       bat '''
-        echo Generating Allure report (full + standalone)...
+        echo Generating Allure (full + standalone)...
         if exist allure-report rmdir /s /q allure-report
         if exist allure-report-standalone rmdir /s /q allure-report-standalone
         npx allure generate --clean allure-results -o allure-report
         npx allure generate --clean allure-results -o allure-report-standalone
       '''
 
-      // 3) Make LIGHT copy (remove screenshots) and zip for email
+      // Create LIGHT zip and a Gmail-safe base64 text
       powershell '''
         try {
           if (Test-Path "allure-report-light") { Remove-Item -Recurse -Force "allure-report-light" }
@@ -179,41 +157,53 @@ pipeline {
           if (Test-Path "allure-report-light\\data\\attachments") {
             Remove-Item -Recurse -Force "allure-report-light\\data\\attachments"
           }
-          if (Test-Path "allure-report.light.allurezip") { Remove-Item "allure-report.light.allurezip" -Force }
-          Compress-Archive -Path "allure-report-light/*" -DestinationPath "allure-report.light.allurezip"
-          $full = (Get-ChildItem "allure-report" -Recurse -Force | Measure-Object -Property Length -Sum).Sum
-          $light = (Get-ChildItem "allure-report-light" -Recurse -Force | Measure-Object -Property Length -Sum).Sum
-          $email = (Get-Item "allure-report.light.allurezip").Length
-          Write-Host ("Sizes -> full:{0}B light:{1}B email:{2}B" -f $full,$light,$email)
+
+          # ZIP for Jenkins artifacts
+          if (Test-Path "allure-report-light.zip") { Remove-Item "allure-report-light.zip" -Force }
+          Compress-Archive -Path "allure-report-light/*" -DestinationPath "allure-report-light.zip"
+
+          # Make Gmail-safe text attachment (base64 of the ZIP)
+          if (Test-Path "allure-report.light.b64") { Remove-Item "allure-report.light.b64" -Force }
+          [IO.File]::WriteAllBytes("allure-report.light.b64", [System.Text.Encoding]::UTF8.GetBytes([Convert]::ToBase64String([IO.File]::ReadAllBytes("allure-report-light.zip"))))
+
+          $full  = (Get-ChildItem "allure-report" -Recurse -Force | Measure-Object -Property Length -Sum).Sum
+          $light = (Get-Item "allure-report-light.zip").Length
+          $b64   = (Get-Item "allure-report.light.b64").Length
+          Write-Host ("Sizes -> full:{0}B lightZip:{1}B b64:{2}B" -f $full,$light,$b64)
         } catch {
-          Write-Host "Packaging (light) failed (non-fatal): $($_.Exception.Message)"
+          Write-Host "Packaging step failed (non-fatal): $($_.Exception.Message)"
         }
       '''
 
-      // 4) Archive artifacts
-      archiveArtifacts artifacts: 'allure-results/**, allure-report/**, allure-report-standalone/**, allure-report-light/**, allure-report.light.allurezip', fingerprint: true
+      // Archive everything in Jenkins
+      archiveArtifacts artifacts: 'allure-results/**, allure-report/**, allure-report-standalone/**, allure-report-light/**, allure-report-light.zip, allure-report.light.b64', fingerprint: true
 
-      // 5) Email the LIGHT attachment (renamed extension so Gmail won’t block)
+      // Email (attach Gmail-safe text)
       script {
         if (params.EMAILS?.trim()) {
           catchError(buildResult: currentBuild.currentResult, stageResult: 'FAILURE') {
             emailext(
-              // Sender must equal the Gmail account configured in Manage Jenkins › Configure System
               from: 'kencholsrusti@gmail.com',
               to: params.EMAILS,
               subject: "Mobile Sanity Suite • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
               mimeType: 'text/plain',
               body: """Result: ${currentBuild.currentResult}
-Build page: ${env.BUILD_URL}
+Build page (LAN): ${env.BUILD_URL}
 
-Jenkins (LAN) report: open the **Allure Report** link on the build page.
+Jenkins (office network): click the **Allure Report** link on the build page.
 
-Offline report attached (LIGHT):
-  1) Download: allure-report.light.allurezip
-  2) Rename to: allure-report.zip
-  3) Extract and open: index.html
+Offline report (works anywhere: phone/ home):
+- Attachment: allure-report.light.b64  (base64 text)
+- How to get the ZIP:
+    Windows PowerShell:
+      Get-Content allure-report.light.b64 | %{[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($_))} > allure-report-light.zip
+    macOS/ Linux:
+      base64 -d allure-report.light.b64 > allure-report-light.zip
+- Then unzip **allure-report-light.zip** and open **index.html**.
+
+Note: you must EXTRACT the ZIP before opening index.html; viewing inside the ZIP shows a blank page.
 """,
-              attachmentsPattern: 'allure-report.light.allurezip'
+              attachmentsPattern: 'allure-report.light.b64'
             )
           }
         } else {
