@@ -67,6 +67,7 @@ pipeline {
           if exist allure-report.zip del /f /q allure-report.zip
           if exist allure-report-light.zip del /f /q allure-report-light.zip
           if exist allure-report.light.b64 del /f /q allure-report.light.b64
+          if exist OFFLINE_REPORT_README.txt del /f /q OFFLINE_REPORT_README.txt
         '''
       }
     }
@@ -126,7 +127,7 @@ pipeline {
 
   post {
     always {
-      // Jenkins Allure link
+      // Publish Allure link in Jenkins
       script {
         try {
           if (fileExists('allure-results')) {
@@ -148,7 +149,7 @@ pipeline {
         npx allure generate --clean allure-results -o allure-report-standalone
       '''
 
-      // Create LIGHT zip and a Gmail-safe base64 text
+      // Light ZIP + Gmail-safe base64 + README
       powershell '''
         try {
           if (Test-Path "allure-report-light") { Remove-Item -Recurse -Force "allure-report-light" }
@@ -158,11 +159,10 @@ pipeline {
             Remove-Item -Recurse -Force "allure-report-light\\data\\attachments"
           }
 
-          # ZIP for Jenkins artifacts
           if (Test-Path "allure-report-light.zip") { Remove-Item "allure-report-light.zip" -Force }
           Compress-Archive -Path "allure-report-light/*" -DestinationPath "allure-report-light.zip"
 
-          # Make Gmail-safe text attachment (base64 of the ZIP)
+          # Gmail-safe base64 text
           if (Test-Path "allure-report.light.b64") { Remove-Item "allure-report.light.b64" -Force }
           [IO.File]::WriteAllBytes("allure-report.light.b64", [System.Text.Encoding]::UTF8.GetBytes([Convert]::ToBase64String([IO.File]::ReadAllBytes("allure-report-light.zip"))))
 
@@ -175,35 +175,45 @@ pipeline {
         }
       '''
 
-      // Archive everything in Jenkins
-      archiveArtifacts artifacts: 'allure-results/**, allure-report/**, allure-report-standalone/**, allure-report-light/**, allure-report-light.zip, allure-report.light.b64', fingerprint: true
+      // README with safe instructions (no ${} in it)
+      writeFile file: 'OFFLINE_REPORT_README.txt', text: '''
+Offline Allure Report (works anywhere)
 
-      // Email (attach Gmail-safe text)
+This email includes a Gmail-safe text file: allure-report.light.b64
+It is a base64 of the ZIP report (screenshots removed to keep size small).
+
+Decode to ZIP:
+  • Windows (PowerShell):
+      certutil -f -decode "allure-report.light.b64" "allure-report-light.zip"
+  • macOS / Linux:
+      base64 -d allure-report.light.b64 > allure-report-light.zip
+
+Then unzip "allure-report-light.zip" and open "index.html".
+IMPORTANT: extract first; do not open index.html from inside the ZIP.
+'''
+
+      // Archive artifacts
+      archiveArtifacts artifacts: 'allure-results/**, allure-report/**, allure-report-standalone/**, allure-report-light/**, allure-report-light.zip, allure-report.light.b64, OFFLINE_REPORT_README.txt', fingerprint: true
+
+      // Email with attachments (no Groovy interpolation problems)
       script {
         if (params.EMAILS?.trim()) {
           catchError(buildResult: currentBuild.currentResult, stageResult: 'FAILURE') {
+            def header = "Result: ${currentBuild.currentResult}\nBuild page (LAN): ${env.BUILD_URL}\n\n"
+            def bodyStatic = '''Jenkins (office network): click the "Allure Report" link on the build page.
+
+Offline report for phone/home:
+- Attachment: allure-report.light.b64  (Gmail-safe)
+- Attachment: OFFLINE_REPORT_README.txt (instructions)
+- After decoding to allure-report-light.zip, extract and open index.html.
+'''
             emailext(
               from: 'kencholsrusti@gmail.com',
               to: params.EMAILS,
               subject: "Mobile Sanity Suite • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
               mimeType: 'text/plain',
-              body: """Result: ${currentBuild.currentResult}
-Build page (LAN): ${env.BUILD_URL}
-
-Jenkins (office network): click the **Allure Report** link on the build page.
-
-Offline report (works anywhere: phone/ home):
-- Attachment: allure-report.light.b64  (base64 text)
-- How to get the ZIP:
-    Windows PowerShell:
-      Get-Content allure-report.light.b64 | %{[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($_))} > allure-report-light.zip
-    macOS/ Linux:
-      base64 -d allure-report.light.b64 > allure-report-light.zip
-- Then unzip **allure-report-light.zip** and open **index.html**.
-
-Note: you must EXTRACT the ZIP before opening index.html; viewing inside the ZIP shows a blank page.
-""",
-              attachmentsPattern: 'allure-report.light.b64'
+              body: header + bodyStatic,
+              attachmentsPattern: 'allure-report.light.b64, OFFLINE_REPORT_README.txt'
             )
           }
         } else {
