@@ -3,67 +3,23 @@ pipeline {
 
   parameters {
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all suites')
-
-    // Suite switches (must match wdio.conf.ts -> suites keys)
-    booleanParam(name: 'install_adb',                defaultValue: false, description: '')
-    booleanParam(name: 'install_play',               defaultValue: false, description: '')
-    booleanParam(name: 'aggregation_check',          defaultValue: false, description: '')
-    booleanParam(name: 'tnd_check',                  defaultValue: false, description: '')
-    booleanParam(name: 'collection_mode_all',        defaultValue: false, description: '')
-    booleanParam(name: 'collection_mode_trusted',    defaultValue: false, description: '')
-    booleanParam(name: 'collection_mode_untrusted',  defaultValue: false, description: '')
-    booleanParam(name: 'interface_info',             defaultValue: false, description: '')
-    booleanParam(name: 'ipfix_disable',              defaultValue: false, description: '')
-    booleanParam(name: 'ipfix_zero',                 defaultValue: false, description: '')
-    booleanParam(name: 'parent_process_check',       defaultValue: false, description: '')
-    booleanParam(name: 'template_caching_untrusted', defaultValue: false, description: '')
-    booleanParam(name: 'before_after_reboot',        defaultValue: false, description: '')
-    booleanParam(name: 'aup_should_displayed',       defaultValue: false, description: '')
-    booleanParam(name: 'aup_should_not_displayed',   defaultValue: false, description: '')
-    booleanParam(name: 'eula_not_accepted',          defaultValue: false, description: '')
-    booleanParam(name: 'negatives',                  defaultValue: false, description: '')
-
-    string(name: 'EMAILS', defaultValue: '', description: 'Recipients (comma-separated)')
+    booleanParam(name: 'parent_process_check', defaultValue: true, description: '')
+    string(name: 'EMAILS', defaultValue: 'srustikenchol555@gmail.com', description: 'Recipients (comma-separated)')
   }
 
   stages {
-    stage('Checkout') {
-      steps { checkout scm }
-    }
+    stage('Checkout') { steps { checkout scm } }
 
-    stage('Select suites') {
-      steps {
-        script {
-          def all = [
-            'install_adb','install_play','aggregation_check','tnd_check',
-            'collection_mode_all','collection_mode_trusted','collection_mode_untrusted',
-            'interface_info','ipfix_disable','ipfix_zero','parent_process_check',
-            'template_caching_untrusted','before_after_reboot',
-            'aup_should_displayed','aup_should_not_displayed','eula_not_accepted',
-            'negatives'
-          ]
-          def chosen = params.RUN_ALL ? all : all.findAll { params[it] }
-          if (!chosen) error 'No suites selected — pick at least one or enable RUN_ALL'
-          env.CHOSEN = chosen.join(',')
-          echo "Suites selected: ${env.CHOSEN}"
-        }
-      }
-    }
-
-    stage('Clean old Allure outputs (fresh run)') {
+    stage('Clean old Allure outputs') {
       steps {
         bat '''
         echo Cleaning old Allure results and reports...
         if exist allure-results rmdir /s /q allure-results
         if exist allure-report  rmdir /s /q allure-report
-
-        :: our standalone/light copies (separate from plugin output)
-        if exist allure-report-standalone  rmdir /s /q allure-report-standalone
-        if exist allure-report-light       rmdir /s /q allure-report-light
-
-        if exist allure-report.zip del /f /q allure-report.zip
-        if exist allure-report-light.zip del /f /q allure-report-light.zip
-        if exist allure-report.light.bin del /f /q allure-report.light.bin
+        if exist allure-report-standalone rmdir /s /q allure-report-standalone
+        if exist allure-report-light rmdir /s /q allure-report-light
+        del /f /q allure-report*.zip 2>nul
+        del /f /q allure-report*.bin 2>nul
         '''
       }
     }
@@ -72,45 +28,17 @@ pipeline {
       steps {
         bat '''
         call node -v
-        if errorlevel 1 ( echo Node not found & exit /b 1 )
+        if errorlevel 1 (echo Node not found & exit /b 1)
         call npm ci
         if errorlevel 1 exit /b 1
         '''
       }
     }
 
-    stage('Run selected suites (sequential with CURRENT_FLOW)') {
+    stage('Run suite') {
       steps {
-        script {
-          def FLOW = [
-            'install_adb':'Install via ADB',
-            'install_play':'Install via Play Store',
-            'aggregation_check':'Aggregation Check',
-            'tnd_check':'TND Check',
-            'collection_mode_all':'Collection Mode - All',
-            'collection_mode_trusted':'Collection Mode - Trusted',
-            'collection_mode_untrusted':'Collection Mode - Untrusted',
-            'interface_info':'Interface Info',
-            'ipfix_disable':'IPFIX Disable',
-            'ipfix_zero':'IPFIX Zero',
-            'parent_process_check':'Parent Process Check',
-            'template_caching_untrusted':'Template Caching - Untrusted',
-            'before_after_reboot':'Before/After Reboot',
-            'aup_should_displayed':'AUP Should Display',
-            'aup_should_not_displayed':'AUP Should NOT Display',
-            'eula_not_accepted':'EULA Not Accepted',
-            'negatives':'Negatives'
-          ]
-          for (suite in env.CHOSEN.split(',')) {
-            def flow = FLOW.get(suite, suite)
-            echo "=== RUNNING ${suite} [FLOW=${flow}] ==="
-            withEnv(["CURRENT_FLOW=${flow}"]) {
-              // keep going even if a suite fails
-              catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                bat "npx wdio run wdio.conf.ts --suite ${suite}"
-              }
-            }
-          }
+        catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+          bat 'npx wdio run wdio.conf.ts --suite parent_process_check'
         }
       }
     }
@@ -118,9 +46,9 @@ pipeline {
     stage('Verify allure-results') {
       steps {
         bat '''
-          echo ===== Checking allure-results =====
-          if exist allure-results ( dir /b allure-results ) else ( echo NO allure-results folder found! )
-          echo ===================================
+        echo ===== Checking allure-results =====
+        if exist allure-results (dir /b allure-results) else (echo NO allure-results folder found!)
+        echo ===================================
         '''
       }
     }
@@ -128,94 +56,62 @@ pipeline {
 
   post {
     always {
-      // 1) Publish Allure sidebar link (plugin). Do NOT delete allure-report afterwards.
+      // Publish Allure plugin report (keeps sidebar link working)
       script {
         try {
           if (fileExists('allure-results')) {
             allure(results: [[path: 'allure-results']])
-          } else {
-            echo 'No allure-results to publish.'
-          }
-        } catch (err) {
-          echo "Allure plugin publish step failed (non-fatal): ${err}"
-        }
+          } else { echo 'No allure-results to publish.' }
+        } catch (err) { echo "Allure publish failed: ${err}" }
       }
 
-      // 2) Generate a FULL standalone copy (separate folder, safe for zipping)
+      // Standalone report for email
       bat '''
-      echo Generating Allure report (standalone copy)...
-      if exist allure-report-standalone rmdir /s /q allure-report-standalone
+      echo Generating standalone Allure report...
       npx allure generate --clean allure-results -o allure-report-standalone
       '''
 
-      // 3) Make a LIGHT copy (remove attachments) to keep email small and Gmail-safe
+      // Light copy for email (remove screenshots)
       powershell '''
-        try {
-          if (Test-Path "allure-report-light") { Remove-Item -Recurse -Force "allure-report-light" }
-          New-Item -ItemType Directory -Path "allure-report-light" | Out-Null
-          Copy-Item -Path "allure-report-standalone\\*" -Destination "allure-report-light" -Recurse -Force
-
-          # Drop heavy screenshots/attachments
-          if (Test-Path "allure-report-light\\data\\attachments") {
-            Remove-Item -Recurse -Force "allure-report-light\\data\\attachments"
-          }
-        } catch {
-          Write-Host "Light copy step failed (non-fatal): $($_.Exception.Message)"
+        if (Test-Path "allure-report-light") { Remove-Item -Recurse -Force "allure-report-light" }
+        New-Item -ItemType Directory -Path "allure-report-light" | Out-Null
+        Copy-Item -Path "allure-report-standalone\\*" -Destination "allure-report-light" -Recurse -Force
+        if (Test-Path "allure-report-light\\data\\attachments") {
+          Remove-Item -Recurse -Force "allure-report-light\\data\\attachments"
         }
       '''
 
-      // 4) Zip copies; send LIGHT as .bin (Gmail is happier with non-zip extensions)
+      // Zip and Gmail-safe .bin
       powershell '''
-        try {
-          if (Test-Path "allure-report.zip") { Remove-Item "allure-report.zip" -Force }
-          if (Test-Path "allure-report-light.zip") { Remove-Item "allure-report-light.zip" -Force }
-          if (Test-Path "allure-report.light.bin") { Remove-Item "allure-report.light.bin" -Force }
-
-          Compress-Archive -Path "allure-report-standalone/*" -DestinationPath "allure-report.zip"
-          Compress-Archive -Path "allure-report-light/*"      -DestinationPath "allure-report-light.zip"
-
-          # duplicate to .bin so recipients can rename to .zip
-          Copy-Item "allure-report-light.zip" "allure-report.light.bin" -Force
-
-          # Print sizes for debug
-          $f1 = (Get-Item "allure-report.zip").Length
-          $f2 = (Get-Item "allure-report-light.zip").Length
-          $f3 = (Get-Item "allure-report.light.bin").Length
-          Write-Host ("Sizes -> full:{0}B light:{1}B email:{2}B" -f $f1,$f2,$f3)
-        } catch {
-          Write-Host "Zipping/rename step failed (non-fatal): $($_.Exception.Message)"
-        }
+        Compress-Archive -Path "allure-report-light/*" -DestinationPath "allure-report.light.zip"
+        Copy-Item "allure-report.light.zip" "allure-report.light.bin" -Force
+        $size = (Get-Item "allure-report.light.bin").Length
+        Write-Host "Light report size: $size bytes"
       '''
 
-      // 5) Archive artifacts (so you can always download from Jenkins)
-      archiveArtifacts artifacts: 'allure-results/**, allure-report/**, allure-report-standalone/**, allure-report-light/**, allure-report.zip, allure-report-light.zip, allure-report.light.bin', fingerprint: true
+      // Archive for Jenkins artifacts
+      archiveArtifacts artifacts: 'allure-results/**, allure-report-standalone/**, allure-report-light/**, allure-report.light.*', fingerprint: true
 
-      // 6) Email LIGHT offline report (attach .bin). Don't fail build if Gmail rejects.
+      // Email section
       script {
         if (params.EMAILS?.trim()) {
-          catchError(buildResult: currentBuild.currentResult, stageResult: 'FAILURE') {
-            emailext(
-              from: 'YOUR_GMAIL_ADDRESS_HERE',  // must match your SMTP Gmail user
-              to: params.EMAILS,
-              subject: "Mobile Automation • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
-              mimeType: 'text/plain',
-              body: """Result: ${currentBuild.currentResult}
+          emailext(
+            from: 'YOUR_GMAIL_ADDRESS_HERE',
+            to: params.EMAILS,
+            subject: "Mobile Automation • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
+            mimeType: 'text/plain',
+            body: """Result: ${currentBuild.currentResult}
 
-Allure (Jenkins link): open the **Allure Report** link on the build page.
+Allure (Jenkins): open the **Allure Report** link on the build page.
 
-Offline copy attached (LIGHT):
+Offline report attached:
 1) Download: allure-report.light.bin
 2) Rename to: allure-report.zip
-3) Extract, open: index.html
-
-Full report also archived in Jenkins as 'allure-report.zip'.
+3) Extract and open: index.html
 """,
-              attachmentsPattern: 'allure-report.light.bin'
-            )
-          }
-        } else {
-          echo 'EMAILS not provided — skipping email.'
-        }
+            attachmentsPattern: 'allure-report.light.bin'
+          )
+        } else { echo 'No EMAILS provided.' }
       }
     }
   }
