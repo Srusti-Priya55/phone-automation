@@ -139,31 +139,28 @@ pipeline {
     powershell '''
       $ErrorActionPreference = "Stop"
 
-      # 1) Locate Edge (prefer 64-bit path, fallback to x86)
       $edge = "${Env:ProgramFiles}\\Microsoft\\Edge\\Application\\msedge.exe"
       if (-not (Test-Path $edge)) {
         $edge = "${Env:ProgramFiles(x86)}\\Microsoft\\Edge\\Application\\msedge.exe"
       }
       if (-not (Test-Path $edge)) {
-        throw "Microsoft Edge not found. Install Edge or set --browser-executable-path manually."
+        throw "Microsoft Edge not found. Please install it."
       }
       Write-Host "Using Edge at: $edge"
 
-      # 2) Build file:// URL for Allure index.html
       $indexFile = Join-Path $PWD "allure-report\\index.html"
       if (-not (Test-Path $indexFile)) { throw "Allure index.html not found: $indexFile" }
-      $indexUrl = "file:///" + ($indexFile -replace '\\\\','/')  # file:///C:/...
+      $indexUrl = "file:///" + ($indexFile -replace '\\\\','/')
 
-      # 3) Output path
       $out = "allure-report.single.html"
       if (Test-Path $out) { Remove-Item $out -Force }
 
-      # 4) Run single-file-cli via npx, forcing a known version and pointing to Edge
-      $cmd = @(
-        "npx", "--yes", "--package", "single-file-cli@2.0.75", "single-file",
+      # Build argument list properly
+      $args = @(
+        "--yes", "--package", "single-file-cli@2.0.75", "single-file",
         $indexUrl,
         "-o", $out,
-        "--browser-executable-path", "`"$edge`"",
+        "--browser-executable-path", $edge,
         "--browser-headless", "true",
         "--browser-arg", "--headless=new",
         "--browser-arg", "--disable-gpu",
@@ -174,10 +171,15 @@ pipeline {
         "--self-extracting-archive", "true",
         "--resolve-links", "false"
       )
-      Write-Host "Running: $($cmd -join ' ')"
-      & cmd.exe /c ($cmd -join ' ') | Out-Host
 
-      # 5) Verify output
+      Write-Host "Running npx with arguments:`n$args"
+
+      # Run with Start-Process so arguments are passed correctly
+      $process = Start-Process -FilePath "npx.cmd" -ArgumentList $args -NoNewWindow -Wait -PassThru -WorkingDirectory $PWD
+      if ($process.ExitCode -ne 0) {
+        throw "single-file-cli exited with code $($process.ExitCode)"
+      }
+
       if (-not (Test-Path $out)) {
         throw "Single HTML not created: $out"
       } else {
@@ -187,6 +189,7 @@ pipeline {
     '''
   }
 }
+
 
     stage('Publish & Archive') {
       steps {
