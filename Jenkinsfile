@@ -198,16 +198,17 @@ pipeline {
           if (recipients) {
             emailext(
               to: recipients,
-              subject: "Mobile Sanity • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
+              subject: "Mobile Sanity  Build #${env.BUILD_NUMBER}  ${currentBuild.currentResult}",
               mimeType: 'text/plain',
               body: """Hi Team,
 
-Allure (Jenkins UI): ${env.BUILD_URL}allure
-Attached: single-file Allure report (open directly on phone/desktop — no server).
+Attached: Allure report.
 
-Result: ${currentBuild.currentResult}
+Status: ${currentBuild.currentResult}
+Executed On: ${new Date().format("yyyy-MM-dd HH:mm:ss")}
+Duration: ${currentBuild.durationString.replace(' and counting', '')}
 """,
-              attachmentsPattern: 'allure-report.single.html'
+              attachmentsPattern: 'allure-report.html'
             )
           } else {
             echo 'EMAILS empty — skipping email.'
