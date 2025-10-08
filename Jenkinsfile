@@ -1,11 +1,35 @@
 pipeline {
   agent any
 
-  parameters {
-    booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all suites')
-    // keep your existing booleans here as needed …
-    string(name: 'EMAILS', defaultValue: '', description: 'Recipients (comma-separated)')
-  }
+parameters {
+  booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all suites')
+
+  // one checkbox per suite
+  booleanParam(name: 'install_adb',                defaultValue: false, description: '')
+  booleanParam(name: 'install_play',               defaultValue: false, description: '')
+  booleanParam(name: 'aggregation_check',          defaultValue: false, description: '')
+  booleanParam(name: 'tnd_check',                  defaultValue: false, description: '')
+
+  booleanParam(name: 'collection_mode_all',        defaultValue: false, description: '')
+  booleanParam(name: 'collection_mode_trusted',    defaultValue: false, description: '')
+  booleanParam(name: 'collection_mode_untrusted',  defaultValue: false, description: '')
+
+  booleanParam(name: 'interface_info',             defaultValue: false, description: '')
+  booleanParam(name: 'ipfix_disable',              defaultValue: false, description: '')
+  booleanParam(name: 'ipfix_zero',                 defaultValue: false, description: '')
+  booleanParam(name: 'parent_process_check',       defaultValue: false, description: '')
+  booleanParam(name: 'template_caching_untrusted', defaultValue: false, description: '')
+  booleanParam(name: 'before_after_reboot',        defaultValue: false, description: '')
+
+  booleanParam(name: 'aup_should_displayed',       defaultValue: false, description: '')
+  booleanParam(name: 'aup_should_not_displayed',   defaultValue: false, description: '')
+  booleanParam(name: 'eula_not_accepted',          defaultValue: false, description: '')
+
+  booleanParam(name: 'negatives',                  defaultValue: false, description: '')
+
+  string(name: 'EMAILS', defaultValue: '', description: 'Recipients (comma-separated)')
+}
+
 
   environment {
     NODE_HOME = "C:\\Program Files\\nodejs"
