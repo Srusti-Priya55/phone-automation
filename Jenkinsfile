@@ -1,39 +1,47 @@
 pipeline {
   agent any
 
-parameters {
-  booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all suites')
+  /***********************
+   * PARAMETERS (17 flows)
+   ***********************/
+  parameters {
+    booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all flows')
 
-  // one checkbox per suite
-  booleanParam(name: 'install_adb',                defaultValue: false, description: '')
-  booleanParam(name: 'install_play',               defaultValue: false, description: '')
-  booleanParam(name: 'aggregation_check',          defaultValue: false, description: '')
-  booleanParam(name: 'tnd_check',                  defaultValue: false, description: '')
+    booleanParam(name: 'install_adb',                defaultValue: false, description: '')
+    booleanParam(name: 'install_play',               defaultValue: false, description: '')
+    booleanParam(name: 'aggregation_check',          defaultValue: false, description: '')
+    booleanParam(name: 'tnd_check',                  defaultValue: false, description: '')
 
-  booleanParam(name: 'collection_mode_all',        defaultValue: false, description: '')
-  booleanParam(name: 'collection_mode_trusted',    defaultValue: false, description: '')
-  booleanParam(name: 'collection_mode_untrusted',  defaultValue: false, description: '')
+    booleanParam(name: 'collection_mode_all',        defaultValue: false, description: '')
+    booleanParam(name: 'collection_mode_trusted',    defaultValue: false, description: '')
+    booleanParam(name: 'collection_mode_untrusted',  defaultValue: false, description: '')
 
-  booleanParam(name: 'interface_info',             defaultValue: false, description: '')
-  booleanParam(name: 'ipfix_disable',              defaultValue: false, description: '')
-  booleanParam(name: 'ipfix_zero',                 defaultValue: false, description: '')
-  booleanParam(name: 'parent_process_check',       defaultValue: false, description: '')
-  booleanParam(name: 'template_caching_untrusted', defaultValue: false, description: '')
-  booleanParam(name: 'before_after_reboot',        defaultValue: false, description: '')
+    booleanParam(name: 'interface_info',             defaultValue: false, description: '')
+    booleanParam(name: 'ipfix_disable',              defaultValue: false, description: '')
+    booleanParam(name: 'ipfix_zero',                 defaultValue: false, description: '')
+    booleanParam(name: 'parent_process_check',       defaultValue: false, description: '')
+    booleanParam(name: 'template_caching_untrusted', defaultValue: false, description: '')
+    booleanParam(name: 'before_after_reboot',        defaultValue: false, description: '')
 
-  booleanParam(name: 'aup_should_displayed',       defaultValue: false, description: '')
-  booleanParam(name: 'aup_should_not_displayed',   defaultValue: false, description: '')
-  booleanParam(name: 'eula_not_accepted',          defaultValue: false, description: '')
+    booleanParam(name: 'aup_should_displayed',       defaultValue: false, description: '')
+    booleanParam(name: 'aup_should_not_displayed',   defaultValue: false, description: '')
+    booleanParam(name: 'eula_not_accepted',          defaultValue: false, description: '')
 
-  booleanParam(name: 'negatives',                  defaultValue: false, description: '')
+    booleanParam(name: 'negatives',                  defaultValue: false, description: '')
 
-  string(name: 'EMAILS', defaultValue: '', description: 'Recipients (comma-separated)')
-}
+    string(name: 'EMAILS', defaultValue: '', description: 'Recipients (comma-separated)')
+  }
 
-
+  /***********************
+   * ENV / OPTIONS
+   ***********************/
   environment {
     NODE_HOME = "C:\\Program Files\\nodejs"
     PATH      = "${env.NODE_HOME};${env.PATH}"
+  }
+  options {
+    timestamps()
+    ansiColor('xterm')
   }
 
   stages {
@@ -42,22 +50,15 @@ parameters {
       steps { checkout scm }
     }
 
-    stage('Select suites') {
+    stage('Agent sanity') {
       steps {
-        script {
-          def all = [
-            'install_adb','install_play','aggregation_check','tnd_check',
-            'collection_mode_all','collection_mode_trusted','collection_mode_untrusted',
-            'interface_info','ipfix_disable','ipfix_zero','parent_process_check',
-            'template_caching_untrusted','before_after_reboot',
-            'aup_should_displayed','aup_should_not_displayed','eula_not_accepted',
-            'negatives'
-          ]
-          def chosen = params.RUN_ALL ? all : all.findAll { params[it] }
-          if (!chosen) error 'No suites selected — pick at least one or enable RUN_ALL'
-          env.CHOSEN = chosen.join(',')
-          echo "Suites selected: ${env.CHOSEN}"
-        }
+        bat '''
+          echo ===== Agent sanity =====
+          where node
+          node -v
+          where npm
+          npm -v
+        '''
       }
     }
 
@@ -66,7 +67,7 @@ parameters {
         bat '''
           if exist allure-results rmdir /s /q allure-results
           if exist allure-report rmdir /s /q allure-report
-          if exist allure-report.offline.html del /f /q allure-report.offline.html
+          if exist allure-report.single.html del /f /q allure-report.single.html
         '''
       }
     }
@@ -82,26 +83,50 @@ parameters {
       }
     }
 
-    stage('Run suites') {
+    stage('Select flows') {
       steps {
         script {
+          def all = [
+            'install_adb','install_play','aggregation_check','tnd_check',
+            'collection_mode_all','collection_mode_trusted','collection_mode_untrusted',
+            'interface_info','ipfix_disable','ipfix_zero','parent_process_check',
+            'template_caching_untrusted','before_after_reboot',
+            'aup_should_displayed','aup_should_not_displayed','eula_not_accepted',
+            'negatives'
+          ]
+          def chosen = params.RUN_ALL ? all : all.findAll { params[it] }
+          if (!chosen) error 'No flows selected — pick at least one or enable RUN_ALL'
+          env.CHOSEN = chosen.join(',')
+          echo "Flows selected: ${env.CHOSEN}"
+        }
+      }
+    }
+
+    stage('Run flows (sequential)') {
+      steps {
+        script {
+          // Map checkbox -> friendly flow name (used by WDIO -> Allure labels)
           def FLOW = [
             install_adb               : 'Install via ADB',
             install_play              : 'Install via Play Store',
             aggregation_check         : 'Aggregation Check',
             tnd_check                 : 'TND Check',
+
             collection_mode_all       : 'Collection Mode - All',
             collection_mode_trusted   : 'Collection Mode - Trusted',
             collection_mode_untrusted : 'Collection Mode - Untrusted',
+
             interface_info            : 'Interface Info',
             ipfix_disable             : 'IPFIX Disable',
             ipfix_zero                : 'IPFIX Zero',
             parent_process_check      : 'Parent Process Check',
             template_caching_untrusted: 'Template Caching - Untrusted',
             before_after_reboot       : 'Before/After Reboot',
+
             aup_should_displayed      : 'AUP Should Display',
             aup_should_not_displayed  : 'AUP Should NOT Display',
             eula_not_accepted         : 'EULA Not Accepted',
+
             negatives                 : 'Negatives'
           ]
 
@@ -109,6 +134,7 @@ parameters {
             def flow = FLOW.get(suite, suite)
             echo "=== RUNNING ${suite} [FLOW=${flow}] ==="
             withEnv(["CURRENT_FLOW=${flow}"]) {
+              // continue pipeline even if one suite fails so Allure + email still happen
               catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                 bat "npx wdio run wdio.conf.ts --suite ${suite}"
               }
@@ -122,8 +148,11 @@ parameters {
       steps {
         bat '''
           echo ==== Generate Allure ====
+          if not exist allure-results (
+            echo No allure-results found
+            exit /b 1
+          )
           npx allure generate --clean allure-results -o allure-report
-          if errorlevel 1 exit /b 1
         '''
       }
     }
@@ -159,56 +188,36 @@ parameters {
             dir allure-report
             exit /b 1
           )
-          echo Created: allure-report\\allure-report.offline.html
+          copy /y "allure-report\\allure-report.offline.html" "allure-report.single.html" >nul
+          echo Created: allure-report.single.html
         '''
       }
     }
 
-
     stage('Publish & Archive') {
-  when { expression { fileExists('allure-report/allure-report.offline.html') } }
-  steps {
-    script {
-      archiveArtifacts artifacts: 'allure-report/**, allure-results/**', fingerprint: true
+      steps {
+        script {
+          // keep everything downloadable from Jenkins
+          archiveArtifacts artifacts: 'allure-results/**, allure-report/**, tools/**, allure-report.single.html', fingerprint: true
 
-      if ((params.EMAILS ?: '').trim()) {
-        emailext(
-          from: 'kspriya@cisco.com',                // your sender
-          to: params.EMAILS,
-          subject: "Mobile Sanity • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
-          mimeType: 'text/plain',
-          body: """Hi Team,
+          def recipients = (params.EMAILS ?: '').trim()
+          if (recipients) {
+            emailext(
+              to: recipients,
+              subject: "Mobile Sanity • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
+              mimeType: 'text/plain',
+              body: """Hi Team,
 
-Allure (Jenkins): ${env.BUILD_URL}allure
-Single-file HTML is attached — opens offline on phone & desktop.
+Allure (Jenkins UI): ${env.BUILD_URL}allure
+Attached: single-file Allure report (open directly on phone/desktop — no server).
 
 Result: ${currentBuild.currentResult}
 """,
-          attachmentsPattern: 'allure-report/allure-report.offline.html'
-        )
-      }
-    }
-  }
-}
-
-
-  post {
-    always {
-      script {
-        if (params.EMAILS?.trim() && fileExists('allure-report.offline.html')) {
-          // plain-text body; Jenkins SMTP already configured
-          def body = """Build: ${env.BUILD_URL}
-
-Attached: allure-report.offline.html
-• Opens on phone or desktop with no server.
-"""
-          emailext(
-            to: params.EMAILS,
-            subject: "Mobile Sanity • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
-            mimeType: 'text/plain',
-            body: body,
-            attachmentsPattern: 'allure-report.offline.html'
-          )
+              attachmentsPattern: 'allure-report.single.html'
+            )
+          } else {
+            echo 'EMAILS empty — skipping email.'
+          }
         }
       }
     }
