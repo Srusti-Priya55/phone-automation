@@ -3,26 +3,23 @@ pipeline {
 
   parameters {
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all suites')
-
-    // your existing 17 suite toggles:
-    booleanParam(name: 'install_adb',                defaultValue: false, description: '')
-    booleanParam(name: 'install_play',               defaultValue: false, description: '')
-    booleanParam(name: 'aggregation_check',          defaultValue: false, description: '')
-    booleanParam(name: 'tnd_check',                  defaultValue: false, description: '')
-    booleanParam(name: 'collection_mode_all',        defaultValue: false, description: '')
-    booleanParam(name: 'collection_mode_trusted',    defaultValue: false, description: '')
-    booleanParam(name: 'collection_mode_untrusted',  defaultValue: false, description: '')
-    booleanParam(name: 'interface_info',             defaultValue: false, description: '')
-    booleanParam(name: 'ipfix_disable',              defaultValue: false, description: '')
-    booleanParam(name: 'ipfix_zero',                 defaultValue: false, description: '')
-    booleanParam(name: 'parent_process_check',       defaultValue: false, description: '')
+    booleanParam(name: 'install_adb', defaultValue: false, description: '')
+    booleanParam(name: 'install_play', defaultValue: false, description: '')
+    booleanParam(name: 'aggregation_check', defaultValue: false, description: '')
+    booleanParam(name: 'tnd_check', defaultValue: false, description: '')
+    booleanParam(name: 'collection_mode_all', defaultValue: false, description: '')
+    booleanParam(name: 'collection_mode_trusted', defaultValue: false, description: '')
+    booleanParam(name: 'collection_mode_untrusted', defaultValue: false, description: '')
+    booleanParam(name: 'interface_info', defaultValue: false, description: '')
+    booleanParam(name: 'ipfix_disable', defaultValue: false, description: '')
+    booleanParam(name: 'ipfix_zero', defaultValue: false, description: '')
+    booleanParam(name: 'parent_process_check', defaultValue: false, description: '')
     booleanParam(name: 'template_caching_untrusted', defaultValue: false, description: '')
-    booleanParam(name: 'before_after_reboot',        defaultValue: false, description: '')
-    booleanParam(name: 'aup_should_displayed',       defaultValue: false, description: '')
-    booleanParam(name: 'aup_should_not_displayed',   defaultValue: false, description: '')
-    booleanParam(name: 'eula_not_accepted',          defaultValue: false, description: '')
-    booleanParam(name: 'negatives',                  defaultValue: false, description: '')
-
+    booleanParam(name: 'before_after_reboot', defaultValue: false, description: '')
+    booleanParam(name: 'aup_should_displayed', defaultValue: false, description: '')
+    booleanParam(name: 'aup_should_not_displayed', defaultValue: false, description: '')
+    booleanParam(name: 'eula_not_accepted', defaultValue: false, description: '')
+    booleanParam(name: 'negatives', defaultValue: false, description: '')
     string(name: 'EMAILS', defaultValue: '', description: 'Recipients (comma-separated)')
   }
 
@@ -35,10 +32,7 @@ pipeline {
   options { timestamps() }
 
   stages {
-
-    stage('Checkout') {
-      steps { checkout scm }
-    }
+    stage('Checkout'){ steps { checkout scm } }
 
     stage('Agent sanity') {
       steps {
@@ -145,15 +139,31 @@ pipeline {
       steps {
         powershell '''
           $ErrorActionPreference = "Stop"
-          $script = "tools\\make-allure-single.ps1"
-          if (-not (Test-Path $script)) { throw "Script not found: $script" }
-          powershell -NoProfile -ExecutionPolicy Bypass -File $script `
-            -ReportDir "allure-report" `
-            -Output $env:SINGLE_FILE_NAME `
-            -WaitSeconds 60 `
-            -Verbose:$true
-          if (-not (Test-Path $env:SINGLE_FILE_NAME)) { throw "Single HTML not created" }
-          $size = (Get-Item $env:SINGLE_FILE_NAME).Length
+          $index = Join-Path $PWD "allure-report\\index.html"
+          if (-not (Test-Path $index)) { throw "Allure index.html not found: $index" }
+
+          # Ensure single-file-cli is available and Chromium can be launched
+          npx -y single-file-cli --version | Out-Host
+
+          $out = "$env:SINGLE_FILE_NAME"
+          if (Test-Path $out) { Remove-Item $out -Force }
+
+          # Feed the local file directly (no HTTP server)
+          $args = @(
+            $index,                 # local path is accepted
+            '-o', $out,
+            '--block-scripts','false',
+            '--browser-wait-until','networkIdle',
+            '--browser-wait-until-delay','1500',
+            '--self-extracting-archive','true',
+            '--resolve-links','false'
+          )
+
+          Write-Host "Running: npx -y single-file-cli $($args -join ' ')"
+          & npx -y single-file-cli @args | Out-Host
+
+          if (-not (Test-Path $out)) { throw "Single HTML not created: $out" }
+          $size = (Get-Item $out).Length
           Write-Host "Single HTML size: $size bytes"
         '''
       }
@@ -179,21 +189,15 @@ pipeline {
     always {
       script {
         def toList = params.EMAILS?.trim()
-        def attach = fileExists(env.SINGLE_FILE_NAME) ? env.SINGLE_FILE_NAME : ''
         if (toList) {
+          def attachPattern = fileExists(env.SINGLE_FILE_NAME) ? env.SINGLE_FILE_NAME : ''
           catchError(buildResult: currentBuild.currentResult, stageResult: 'FAILURE') {
-            def body = """Result: ${currentBuild.currentResult}
-Build: ${env.BUILD_URL}
-
-Attached:
-- ${env.SINGLE_FILE_NAME}  (opens offline on phone/desktop)
-"""
             emailext(
               to: toList,
               subject: "Mobile Sanity Suite • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
               mimeType: 'text/plain',
-              body: body,
-              attachmentsPattern: attach
+              body: "Result: ${currentBuild.currentResult}\n\nAttached: ${env.SINGLE_FILE_NAME}",
+              attachmentsPattern: attachPattern
             )
           }
         } else {
