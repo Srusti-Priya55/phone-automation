@@ -25,10 +25,10 @@ $baseUrl = "http://127.0.0.1:$port"
 
 # Start "http-server" from npm in background
 # Requires Node on PATH; Jenkinsfile sets NODE_HOME/PATH.
-$cmd = "npx"
-$args = "-y http-server `"$ReportDir`" -p $port --silent --cors"
-Write-Host "==> Starting server: $cmd $args"
-$proc = Start-Process -FilePath $cmd -ArgumentList $args -PassThru -WindowStyle Hidden
+$sfCmd  = "npx"
+$sfArgs = "-y single-file-cli `"$baseUrl/index.html`" -o `"$OutFile`" --block-scripts false --browser-wait-until networkIdle --browser-wait-until-delay 1500"
+& $sfCmd $sfArgs
+
 
 # Health check
 $ok = $false
