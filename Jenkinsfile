@@ -1,50 +1,37 @@
 pipeline {
   agent any
 
-  /***********************
-   * PARAMETERS
-   ***********************/
   parameters {
-    booleanParam(name: 'RUN_ALL', defaultValue: true, description: 'Run all suites')
-    // keep your existing booleans if you want to select subsets; showing minimal here:
+    booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all suites')
+    // keep your existing booleans here as needed …
     string(name: 'EMAILS', defaultValue: '', description: 'Recipients (comma-separated)')
   }
 
-  /***********************
-   * ENV
-   ***********************/
   environment {
     NODE_HOME = "C:\\Program Files\\nodejs"
     PATH      = "${env.NODE_HOME};${env.PATH}"
   }
 
-  options {
-    timestamps()
-  }
-
   stages {
+
     stage('Checkout') {
       steps { checkout scm }
-    }
-
-    stage('Agent sanity') {
-      steps {
-        bat '''
-          echo ===== Agent sanity =====
-          where node
-          node -v
-          where npm
-          npm -v
-        '''
-      }
     }
 
     stage('Select suites') {
       steps {
         script {
-          // If you want the checkbox matrix, re-add your map logic here.
-          // For now: always run your default entry (e.g., collection_mode_trusted)
-          env.CHOSEN = params.RUN_ALL ? 'collection_mode_trusted' : 'collection_mode_trusted'
+          def all = [
+            'install_adb','install_play','aggregation_check','tnd_check',
+            'collection_mode_all','collection_mode_trusted','collection_mode_untrusted',
+            'interface_info','ipfix_disable','ipfix_zero','parent_process_check',
+            'template_caching_untrusted','before_after_reboot',
+            'aup_should_displayed','aup_should_not_displayed','eula_not_accepted',
+            'negatives'
+          ]
+          def chosen = params.RUN_ALL ? all : all.findAll { params[it] }
+          if (!chosen) error 'No suites selected — pick at least one or enable RUN_ALL'
+          env.CHOSEN = chosen.join(',')
           echo "Suites selected: ${env.CHOSEN}"
         }
       }
@@ -55,7 +42,7 @@ pipeline {
         bat '''
           if exist allure-results rmdir /s /q allure-results
           if exist allure-report rmdir /s /q allure-report
-          if exist allure-report.single.html del /f /q allure-report.single.html
+          if exist allure-report.offline.html del /f /q allure-report.offline.html
         '''
       }
     }
@@ -64,19 +51,44 @@ pipeline {
       steps {
         bat '''
           call node -v
-          if errorlevel 1 (echo Node not found & exit /b 1)
+          if errorlevel 1 ( echo Node not found & exit /b 1 )
           call npm ci
           if errorlevel 1 exit /b 1
         '''
       }
     }
 
-    stage('Run WDIO') {
+    stage('Run suites') {
       steps {
         script {
-          // run your suite(s). Keep going even if tests fail, so we still get reports.
-          catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-            bat 'npx wdio run wdio.conf.ts --suite collection_mode_trusted'
+          def FLOW = [
+            install_adb               : 'Install via ADB',
+            install_play              : 'Install via Play Store',
+            aggregation_check         : 'Aggregation Check',
+            tnd_check                 : 'TND Check',
+            collection_mode_all       : 'Collection Mode - All',
+            collection_mode_trusted   : 'Collection Mode - Trusted',
+            collection_mode_untrusted : 'Collection Mode - Untrusted',
+            interface_info            : 'Interface Info',
+            ipfix_disable             : 'IPFIX Disable',
+            ipfix_zero                : 'IPFIX Zero',
+            parent_process_check      : 'Parent Process Check',
+            template_caching_untrusted: 'Template Caching - Untrusted',
+            before_after_reboot       : 'Before/After Reboot',
+            aup_should_displayed      : 'AUP Should Display',
+            aup_should_not_displayed  : 'AUP Should NOT Display',
+            eula_not_accepted         : 'EULA Not Accepted',
+            negatives                 : 'Negatives'
+          ]
+
+          for (suite in env.CHOSEN.split(',')) {
+            def flow = FLOW.get(suite, suite)
+            echo "=== RUNNING ${suite} [FLOW=${flow}] ==="
+            withEnv(["CURRENT_FLOW=${flow}"]) {
+              catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                bat "npx wdio run wdio.conf.ts --suite ${suite}"
+              }
+            }
           }
         }
       }
@@ -87,6 +99,7 @@ pipeline {
         bat '''
           echo ==== Generate Allure ====
           npx allure generate --clean allure-results -o allure-report
+          if errorlevel 1 exit /b 1
         '''
       }
     }
@@ -98,7 +111,7 @@ pipeline {
             allure(results: [[path: 'allure-results']])
             echo 'Published Allure results to Jenkins.'
           } else {
-            error 'allure-results not found — cannot publish Allure link.'
+            echo 'No allure-results to publish.'
           }
         }
       }
@@ -106,60 +119,24 @@ pipeline {
 
     stage('Make single-file HTML (no server)') {
       steps {
-        // Build a one-file HTML using Edge in headless mode against file:///.../index.html
-        powershell '''
-          $ErrorActionPreference = "Stop"
-
-          # 1) Find Edge
-          $edge = "$Env:ProgramFiles(x86)\\Microsoft\\Edge\\Application\\msedge.exe"
-          if (-not (Test-Path $edge)) { $edge = "$Env:ProgramFiles\\Microsoft\\Edge\\Application\\msedge.exe" }
-          if (-not (Test-Path $edge)) { throw "Microsoft Edge not found. Install Edge on this agent." }
-          Write-Host "Using Edge at: $edge"
-
-          # 2) Build file:// URL to Allure index.html
-          $idxPath = (Resolve-Path ".\\allure-report\\index.html").Path
-          $fileUrl = "file:///" + ($idxPath -replace "\\\\","/")
-
-          # 3) Run single-file-cli via npx (Edge headless, allow file access)
-          $args = @(
-            "--yes", "--package", "single-file-cli@2.0.75", "single-file",
-            $fileUrl,
-            "-o", "allure-report.single.html",
-            "--browser-executable-path", $edge,
-            "--browser-headless", "true",
-            "--browser-arg", "--headless=new",
-            "--browser-arg", "--disable-gpu",
-            "--browser-arg", "--allow-file-access-from-files",
-            "--browser-wait-until", "networkIdle",
-            "--browser-wait-until-delay", "1500",
-            "--block-scripts", "false",
-            "--self-extracting-archive", "true",
-            "--resolve-links", "false"
+        // Uses your node tool: tools/pack-allure-onehtml.js
+        bat '''
+          if not exist tools\\pack-allure-onehtml.js (
+            echo Missing tools\\pack-allure-onehtml.js & exit /b 1
           )
-
-          Write-Host "Running npx with arguments:`n$($args -join ' ')"
-          $p = Start-Process -FilePath "npx" -ArgumentList $args -NoNewWindow -Wait -PassThru
-          if ($p.ExitCode -ne 0) {
-            throw "single-file-cli failed with exit code $($p.ExitCode)"
-          }
-
-          if (-not (Test-Path "allure-report.single.html")) {
-            throw "Single HTML not created: allure-report.single.html"
-          }
-
-          $size = (Get-Item "allure-report.single.html").Length
-          Write-Host ("Created allure-report.single.html ({0} bytes)" -f $size)
+          node tools\\pack-allure-onehtml.js allure-report
+          if errorlevel 1 exit /b 1
+          if not exist allure-report\\allure-report.offline.html (
+            echo Single HTML was not created & exit /b 1
+          )
+          copy /y "allure-report\\allure-report.offline.html" ".\\allure-report.offline.html" >nul
         '''
       }
     }
 
     stage('Publish & Archive') {
       steps {
-        script {
-          def patterns = 'allure-results/**, allure-report/**, allure-report.single.html'
-          archiveArtifacts artifacts: patterns, fingerprint: true
-          echo "Archived: ${patterns}"
-        }
+        archiveArtifacts artifacts: 'allure-results/**, allure-report/**, allure-report.offline.html', fingerprint: true
       }
     }
   }
@@ -167,35 +144,20 @@ pipeline {
   post {
     always {
       script {
-        // Send email only if recipients provided
-        if (params.EMAILS?.trim()) {
-          // Attach the single-file HTML if it exists; otherwise send body only
-          def attach = fileExists('allure-report.single.html') ? 'allure-report.single.html' : ''
-          def resultLine = "Result: ${currentBuild.currentResult}\n"
-          def body = """Hi Team,
+        if (params.EMAILS?.trim() && fileExists('allure-report.offline.html')) {
+          // plain-text body; Jenkins SMTP already configured
+          def body = """Build: ${env.BUILD_URL}
 
-Allure link is available on the Jenkins build page (if you are on VPN/LAN).
-
-Attached (if present):
-- allure-report.single.html  (one file, opens offline on phone/desktop)
-
-Build: ${env.BUILD_URL}
-
-Thanks,
-Automation
+Attached: allure-report.offline.html
+• Opens on phone or desktop with no server.
 """
-
-          catchError(buildResult: currentBuild.currentResult, stageResult: 'FAILURE') {
-            emailext(
-              to: params.EMAILS,
-              subject: "Mobile Sanity Suite • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
-              mimeType: 'text/plain',
-              body: resultLine + body,
-              attachmentsPattern: attach
-            )
-          }
-        } else {
-          echo 'EMAILS not provided — skipping email.'
+          emailext(
+            to: params.EMAILS,
+            subject: "Mobile Sanity • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
+            mimeType: 'text/plain',
+            body: body,
+            attachmentsPattern: 'allure-report.offline.html'
+          )
         }
       }
     }
