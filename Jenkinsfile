@@ -208,7 +208,7 @@ Status: ${currentBuild.currentResult}
 Executed On: ${new Date().format("yyyy-MM-dd HH:mm:ss")}
 Duration: ${currentBuild.durationString.replace(' and counting', '')}
 """,
-              attachmentsPattern: 'allure-report.html'
+              attachmentsPattern: 'allure-report.single.html'
             )
           } else {
             echo 'EMAILS empty — skipping email.'
