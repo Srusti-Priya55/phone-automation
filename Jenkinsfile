@@ -3,36 +3,43 @@ pipeline {
 
   parameters {
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all suites')
-    booleanParam(name: 'install_adb', defaultValue: false, description: '')
-    booleanParam(name: 'install_play', defaultValue: false, description: '')
-    booleanParam(name: 'aggregation_check', defaultValue: false, description: '')
-    booleanParam(name: 'tnd_check', defaultValue: false, description: '')
-    booleanParam(name: 'collection_mode_all', defaultValue: false, description: '')
-    booleanParam(name: 'collection_mode_trusted', defaultValue: false, description: '')
-    booleanParam(name: 'collection_mode_untrusted', defaultValue: false, description: '')
-    booleanParam(name: 'interface_info', defaultValue: false, description: '')
-    booleanParam(name: 'ipfix_disable', defaultValue: false, description: '')
-    booleanParam(name: 'ipfix_zero', defaultValue: false, description: '')
-    booleanParam(name: 'parent_process_check', defaultValue: false, description: '')
+
+    booleanParam(name: 'install_adb',                defaultValue: false, description: '')
+    booleanParam(name: 'install_play',               defaultValue: false, description: '')
+    booleanParam(name: 'aggregation_check',          defaultValue: false, description: '')
+    booleanParam(name: 'tnd_check',                  defaultValue: false, description: '')
+
+    booleanParam(name: 'collection_mode_all',        defaultValue: false, description: '')
+    booleanParam(name: 'collection_mode_trusted',    defaultValue: false, description: '')
+    booleanParam(name: 'collection_mode_untrusted',  defaultValue: false, description: '')
+
+    booleanParam(name: 'interface_info',             defaultValue: false, description: '')
+    booleanParam(name: 'ipfix_disable',              defaultValue: false, description: '')
+    booleanParam(name: 'ipfix_zero',                 defaultValue: false, description: '')
+    booleanParam(name: 'parent_process_check',       defaultValue: false, description: '')
     booleanParam(name: 'template_caching_untrusted', defaultValue: false, description: '')
-    booleanParam(name: 'before_after_reboot', defaultValue: false, description: '')
-    booleanParam(name: 'aup_should_displayed', defaultValue: false, description: '')
-    booleanParam(name: 'aup_should_not_displayed', defaultValue: false, description: '')
-    booleanParam(name: 'eula_not_accepted', defaultValue: false, description: '')
-    booleanParam(name: 'negatives', defaultValue: false, description: '')
+    booleanParam(name: 'before_after_reboot',        defaultValue: false, description: '')
+
+    booleanParam(name: 'aup_should_displayed',       defaultValue: false, description: '')
+    booleanParam(name: 'aup_should_not_displayed',   defaultValue: false, description: '')
+    booleanParam(name: 'eula_not_accepted',          defaultValue: false, description: '')
+
+    booleanParam(name: 'negatives',                  defaultValue: false, description: '')
+
     string(name: 'EMAILS', defaultValue: '', description: 'Recipients (comma-separated)')
   }
 
   environment {
     NODE_HOME = "C:\\Program Files\\nodejs"
     PATH      = "${env.NODE_HOME};${env.PATH}"
-    SINGLE_FILE_NAME = 'allure-report.single.html'
+    SINGLE_FILE_NAME = "allure-report.single.html"
   }
 
-  options { timestamps() }
-
   stages {
-    stage('Checkout'){ steps { checkout scm } }
+
+    stage('Checkout') {
+      steps { checkout scm }
+    }
 
     stage('Agent sanity') {
       steps {
@@ -42,7 +49,6 @@ pipeline {
           node -v
           where npm
           npm -v
-          echo ========================
         '''
       }
     }
@@ -71,7 +77,7 @@ pipeline {
         bat '''
           if exist allure-results rmdir /s /q allure-results
           if exist allure-report rmdir /s /q allure-report
-          if exist %SINGLE_FILE_NAME% del /f /q %SINGLE_FILE_NAME%
+          if exist "%SINGLE_FILE_NAME%" del /f /q "%SINGLE_FILE_NAME%"
         '''
       }
     }
@@ -87,7 +93,7 @@ pipeline {
       }
     }
 
-    stage('Run suites (sequential)') {
+    stage('Run suites') {
       steps {
         script {
           def FLOW = [
@@ -123,44 +129,43 @@ pipeline {
         bat '''
           echo ==== Generate Allure ====
           npx allure generate --clean allure-results -o allure-report
-          if not exist allure-report\\index.html (
-            echo index.html missing!
-            dir /b allure-report
-            exit /b 1
-          )
-          echo First lines of index.html:
-          powershell -NoProfile -Command "Get-Content -Path 'allure-report\\index.html' -TotalCount 5"
-          echo =========================
         '''
       }
     }
 
+    // *********** FIXED SINGLE-HTML STAGE ***********
     stage('Make single-file HTML (no server)') {
       steps {
         powershell '''
           $ErrorActionPreference = "Stop"
+
           $index = Join-Path $PWD "allure-report\\index.html"
           if (-not (Test-Path $index)) { throw "Allure index.html not found: $index" }
-
-          # Ensure single-file-cli is available and Chromium can be launched
-          npx -y single-file-cli --version | Out-Host
 
           $out = "$env:SINGLE_FILE_NAME"
           if (Test-Path $out) { Remove-Item $out -Force }
 
-          # Feed the local file directly (no HTTP server)
+          # Use the correct binary name: "single-file" (package: single-file-cli)
           $args = @(
-            $index,                 # local path is accepted
-            '-o', $out,
-            '--block-scripts','false',
-            '--browser-wait-until','networkIdle',
-            '--browser-wait-until-delay','1500',
-            '--self-extracting-archive','true',
-            '--resolve-links','false'
+            "--yes",
+            "--package", "single-file-cli@2.0.75",
+            "single-file",
+            $index,
+            "-o", $out,
+            "--block-scripts", "false",
+            "--browser-wait-until", "networkIdle",
+            "--browser-wait-until-delay", "1500",
+            "--self-extracting-archive", "true",
+            "--resolve-links", "false"
           )
 
-          Write-Host "Running: npx -y single-file-cli $($args -join ' ')"
-          & npx -y single-file-cli @args | Out-Host
+          Write-Host "Running: npx $($args -join ' ')"
+          & cmd.exe /c "npx $($args -join ' ')" | Out-Host
+
+          if (-not (Test-Path $out)) {
+            Write-Host "First attempt failed, retrying with minimal flags..."
+            & cmd.exe /c "npx --yes --package single-file-cli@2.0.75 single-file `"$index`" -o `"$out`"" | Out-Host
+          }
 
           if (-not (Test-Path $out)) { throw "Single HTML not created: $out" }
           $size = (Get-Item $out).Length
@@ -176,11 +181,11 @@ pipeline {
             if (fileExists('allure-results')) {
               allure(results: [[path: 'allure-results']])
             }
-          } catch (e) {
-            echo "Allure publish failed (non-fatal): ${e}"
+          } catch (err) {
+            echo "Allure publish step failed (non-fatal): ${err}"
           }
         }
-        archiveArtifacts artifacts: 'allure-results/**, allure-report/**, *.html', fingerprint: true
+        archiveArtifacts artifacts: "allure-results/**, allure-report/**, ${env.SINGLE_FILE_NAME}", fingerprint: true
       }
     }
   }
@@ -188,16 +193,19 @@ pipeline {
   post {
     always {
       script {
-        def toList = params.EMAILS?.trim()
-        if (toList) {
-          def attachPattern = fileExists(env.SINGLE_FILE_NAME) ? env.SINGLE_FILE_NAME : ''
+        if (params.EMAILS?.trim()) {
           catchError(buildResult: currentBuild.currentResult, stageResult: 'FAILURE') {
+            def bodyText = """Result: ${currentBuild.currentResult}
+
+Attached:
+- ${env.SINGLE_FILE_NAME} (opens on phone/desktop without a server)
+"""
             emailext(
-              to: toList,
+              to: params.EMAILS,
               subject: "Mobile Sanity Suite • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
               mimeType: 'text/plain',
-              body: "Result: ${currentBuild.currentResult}\n\nAttached: ${env.SINGLE_FILE_NAME}",
-              attachmentsPattern: attachPattern
+              body: bodyText,
+              attachmentsPattern: "${env.SINGLE_FILE_NAME}"
             )
           }
         } else {
