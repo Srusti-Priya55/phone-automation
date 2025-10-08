@@ -135,44 +135,58 @@ pipeline {
 
     // *********** FIXED SINGLE-HTML STAGE ***********
     stage('Make single-file HTML (no server)') {
-      steps {
-        powershell '''
-          $ErrorActionPreference = "Stop"
+  steps {
+    powershell '''
+      $ErrorActionPreference = "Stop"
 
-          $index = Join-Path $PWD "allure-report\\index.html"
-          if (-not (Test-Path $index)) { throw "Allure index.html not found: $index" }
-
-          $out = "$env:SINGLE_FILE_NAME"
-          if (Test-Path $out) { Remove-Item $out -Force }
-
-          # Use the correct binary name: "single-file" (package: single-file-cli)
-          $args = @(
-            "--yes",
-            "--package", "single-file-cli@2.0.75",
-            "single-file",
-            $index,
-            "-o", $out,
-            "--block-scripts", "false",
-            "--browser-wait-until", "networkIdle",
-            "--browser-wait-until-delay", "1500",
-            "--self-extracting-archive", "true",
-            "--resolve-links", "false"
-          )
-
-          Write-Host "Running: npx $($args -join ' ')"
-          & cmd.exe /c "npx $($args -join ' ')" | Out-Host
-
-          if (-not (Test-Path $out)) {
-            Write-Host "First attempt failed, retrying with minimal flags..."
-            & cmd.exe /c "npx --yes --package single-file-cli@2.0.75 single-file `"$index`" -o `"$out`"" | Out-Host
-          }
-
-          if (-not (Test-Path $out)) { throw "Single HTML not created: $out" }
-          $size = (Get-Item $out).Length
-          Write-Host "Single HTML size: $size bytes"
-        '''
+      # 1) Locate Edge (prefer 64-bit path, fallback to x86)
+      $edge = "${Env:ProgramFiles}\\Microsoft\\Edge\\Application\\msedge.exe"
+      if (-not (Test-Path $edge)) {
+        $edge = "${Env:ProgramFiles(x86)}\\Microsoft\\Edge\\Application\\msedge.exe"
       }
-    }
+      if (-not (Test-Path $edge)) {
+        throw "Microsoft Edge not found. Install Edge or set --browser-executable-path manually."
+      }
+      Write-Host "Using Edge at: $edge"
+
+      # 2) Build file:// URL for Allure index.html
+      $indexFile = Join-Path $PWD "allure-report\\index.html"
+      if (-not (Test-Path $indexFile)) { throw "Allure index.html not found: $indexFile" }
+      $indexUrl = "file:///" + ($indexFile -replace '\\\\','/')  # file:///C:/...
+
+      # 3) Output path
+      $out = "allure-report.single.html"
+      if (Test-Path $out) { Remove-Item $out -Force }
+
+      # 4) Run single-file-cli via npx, forcing a known version and pointing to Edge
+      $cmd = @(
+        "npx", "--yes", "--package", "single-file-cli@2.0.75", "single-file",
+        $indexUrl,
+        "-o", $out,
+        "--browser-executable-path", "`"$edge`"",
+        "--browser-headless", "true",
+        "--browser-arg", "--headless=new",
+        "--browser-arg", "--disable-gpu",
+        "--browser-arg", "--allow-file-access-from-files",
+        "--browser-wait-until", "networkIdle",
+        "--browser-wait-until-delay", "1500",
+        "--block-scripts", "false",
+        "--self-extracting-archive", "true",
+        "--resolve-links", "false"
+      )
+      Write-Host "Running: $($cmd -join ' ')"
+      & cmd.exe /c ($cmd -join ' ') | Out-Host
+
+      # 5) Verify output
+      if (-not (Test-Path $out)) {
+        throw "Single HTML not created: $out"
+      } else {
+        $size = (Get-Item $out).Length
+        Write-Host "✅ Created $out ($size bytes)"
+      }
+    '''
+  }
+}
 
     stage('Publish & Archive') {
       steps {
