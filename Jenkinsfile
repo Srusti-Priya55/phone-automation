@@ -202,11 +202,13 @@ pipeline {
               mimeType: 'text/plain',
               body: """Hi Team,
 
-Attached: Allure report.
+This is an automated build status update from the Mobile Automation Suite.
 
 Status: ${currentBuild.currentResult}
 Executed On: ${new Date().format("yyyy-MM-dd HH:mm:ss")}
 Duration: ${currentBuild.durationString.replace(' and counting', '')}
+
+Attached: Allure report.
 """,
               attachmentsPattern: 'allure-report.single.html'
             )
