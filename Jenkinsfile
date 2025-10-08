@@ -4,7 +4,7 @@ pipeline {
   parameters {
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all suites')
 
-    // Per-suite toggles
+    // your existing 17 suite toggles:
     booleanParam(name: 'install_adb',                defaultValue: false, description: '')
     booleanParam(name: 'install_play',               defaultValue: false, description: '')
     booleanParam(name: 'aggregation_check',          defaultValue: false, description: '')
@@ -23,16 +23,35 @@ pipeline {
     booleanParam(name: 'eula_not_accepted',          defaultValue: false, description: '')
     booleanParam(name: 'negatives',                  defaultValue: false, description: '')
 
-    string(name: 'EMAILS', defaultValue: '', description: 'Recipients (comma-separated). Leave blank to skip email.')
+    string(name: 'EMAILS', defaultValue: '', description: 'Recipients (comma-separated)')
   }
 
   environment {
     NODE_HOME = "C:\\Program Files\\nodejs"
     PATH      = "${env.NODE_HOME};${env.PATH}"
+    SINGLE_FILE_NAME = 'allure-report.single.html'
   }
 
+  options { timestamps() }
+
   stages {
-    stage('Checkout') { steps { checkout scm } }
+
+    stage('Checkout') {
+      steps { checkout scm }
+    }
+
+    stage('Agent sanity') {
+      steps {
+        bat '''
+          echo ===== Agent sanity =====
+          where node
+          node -v
+          where npm
+          npm -v
+          echo ========================
+        '''
+      }
+    }
 
     stage('Select suites') {
       steps {
@@ -53,12 +72,12 @@ pipeline {
       }
     }
 
-    stage('Clean') {
+    stage('Clean outputs') {
       steps {
         bat '''
           if exist allure-results rmdir /s /q allure-results
           if exist allure-report rmdir /s /q allure-report
-          if exist allure-report.single.html del /f /q allure-report.single.html
+          if exist %SINGLE_FILE_NAME% del /f /q %SINGLE_FILE_NAME%
         '''
       }
     }
@@ -74,7 +93,7 @@ pipeline {
       }
     }
 
-    stage('Run suites') {
+    stage('Run suites (sequential)') {
       steps {
         script {
           def FLOW = [
@@ -107,32 +126,51 @@ pipeline {
 
     stage('Generate Allure') {
       steps {
-        bat 'npx allure generate --clean allure-results -o allure-report'
-      }
-    }
-
-    stage('Make single-file HTML') {
-      steps {
-        powershell '''
-          $ErrorActionPreference = "Stop"
-          $ps1 = "tools\\make-allure-offline.ps1"
-          if (-not (Test-Path $ps1)) { throw "Missing $ps1 in repo" }
-          powershell -NoProfile -ExecutionPolicy Bypass -File $ps1 -ReportDir "allure-report" -OutFile "allure-report.single.html"
+        bat '''
+          echo ==== Generate Allure ====
+          npx allure generate --clean allure-results -o allure-report
+          if not exist allure-report\\index.html (
+            echo index.html missing!
+            dir /b allure-report
+            exit /b 1
+          )
+          echo First lines of index.html:
+          powershell -NoProfile -Command "Get-Content -Path 'allure-report\\index.html' -TotalCount 5"
+          echo =========================
         '''
       }
     }
 
-    stage('Publish in Jenkins') {
+    stage('Make single-file HTML (no server)') {
+      steps {
+        powershell '''
+          $ErrorActionPreference = "Stop"
+          $script = "tools\\make-allure-single.ps1"
+          if (-not (Test-Path $script)) { throw "Script not found: $script" }
+          powershell -NoProfile -ExecutionPolicy Bypass -File $script `
+            -ReportDir "allure-report" `
+            -Output $env:SINGLE_FILE_NAME `
+            -WaitSeconds 60 `
+            -Verbose:$true
+          if (-not (Test-Path $env:SINGLE_FILE_NAME)) { throw "Single HTML not created" }
+          $size = (Get-Item $env:SINGLE_FILE_NAME).Length
+          Write-Host "Single HTML size: $size bytes"
+        '''
+      }
+    }
+
+    stage('Publish & Archive') {
       steps {
         script {
-          // Publishes nice Allure link in Jenkins UI (non-blocking if plugin not present)
           try {
             if (fileExists('allure-results')) {
               allure(results: [[path: 'allure-results']])
             }
-          } catch (e) { echo "Allure publish skipped: ${e}" }
+          } catch (e) {
+            echo "Allure publish failed (non-fatal): ${e}"
+          }
         }
-        archiveArtifacts artifacts: 'allure-report/**, allure-report.single.html, allure-results/**', fingerprint: true
+        archiveArtifacts artifacts: 'allure-results/**, allure-report/**, *.html', fingerprint: true
       }
     }
   }
@@ -140,22 +178,26 @@ pipeline {
   post {
     always {
       script {
-        if (params.EMAILS?.trim()) {
-          def body = """Result: ${currentBuild.currentResult}
+        def toList = params.EMAILS?.trim()
+        def attach = fileExists(env.SINGLE_FILE_NAME) ? env.SINGLE_FILE_NAME : ''
+        if (toList) {
+          catchError(buildResult: currentBuild.currentResult, stageResult: 'FAILURE') {
+            def body = """Result: ${currentBuild.currentResult}
 Build: ${env.BUILD_URL}
 
-Attachments:
-- allure-report.single.html (opens on phone/desktop without a server)
+Attached:
+- ${env.SINGLE_FILE_NAME}  (opens offline on phone/desktop)
 """
-          emailext(
-            to: params.EMAILS,
-            subject: "Mobile Sanity Suite • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
-            mimeType: 'text/plain',
-            body: body,
-            attachmentsPattern: 'allure-report.single.html'
-          )
+            emailext(
+              to: toList,
+              subject: "Mobile Sanity Suite • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
+              mimeType: 'text/plain',
+              body: body,
+              attachmentsPattern: attach
+            )
+          }
         } else {
-          echo 'EMAILS empty — skipping email.'
+          echo 'EMAILS not provided — skipping email.'
         }
       }
     }
