@@ -1,67 +1,71 @@
-# tools/make-allure-offline.ps1
 param(
-  [string]$ReportDir   = "allure-report",
-  [string]$OutFile     = "allure-report.single.html",
-  [int]$Port           = 8123,
-  [string]$BrowserExe  = ""   # e.g. "C:\Program Files\Microsoft\Edge\Application\msedge.exe"
+  [string]$ReportDir = "allure-report",
+  [string]$OutFile   = "allure-report.single.html",
+  [int]$MaxWaitSec   = 20
 )
 
 $ErrorActionPreference = "Stop"
 
+Write-Host "==> Input report dir: $ReportDir"
 if (-not (Test-Path $ReportDir)) {
-  throw "Folder '$ReportDir' not found. Generate Allure into '$ReportDir' first."
+  throw "Report folder '$ReportDir' not found."
 }
 
-# Pick a port (fallback if busy)
+# Find a free TCP port on loopback
+function Get-FreePort {
+  $listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0)
+  $listener.Start()
+  $port = ($listener.LocalEndpoint).Port
+  $listener.Stop()
+  return $port
+}
+
+$port = Get-FreePort
+$baseUrl = "http://127.0.0.1:$port"
+
+# Start "http-server" from npm in background
+# Requires Node on PATH; Jenkinsfile sets NODE_HOME/PATH.
+$cmd = "npx"
+$args = "-y http-server `"$ReportDir`" -p $port --silent --cors"
+Write-Host "==> Starting server: $cmd $args"
+$proc = Start-Process -FilePath $cmd -ArgumentList $args -PassThru -WindowStyle Hidden
+
+# Health check
+$ok = $false
+for ($i=0; $i -lt $MaxWaitSec; $i++) {
+  Start-Sleep -Seconds 1
+  try {
+    $resp = Invoke-WebRequest "$baseUrl/index.html" -UseBasicParsing -TimeoutSec 5
+    if ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 400) { $ok = $true; break }
+  } catch { }
+}
+if (-not $ok) {
+  try { if ($proc -and !$proc.HasExited) { $proc.Kill() } } catch {}
+  throw "Local server failed to start on $baseUrl"
+}
+
+# Build single-file HTML with SingleFile CLI (headless Chromium)
+# Key flags:
+#  --block-scripts false       -> let Allure JS execute while capturing
+#  --browser-wait-until ...    -> wait for network to be idle
+#  --browser-wait-until-delay  -> small delay after idle
+Write-Host "==> Capturing $baseUrl/index.html -> $OutFile"
+$sfCmd  = "npx"
+$sfArgs = "-y single-file-cli `"$baseUrl/index.html`" -o `"$OutFile`" --block-scripts false --browser-wait-until networkIdle --browser-wait-until-delay 1500"
+$LASTEXITCODE = 0
+& $sfCmd $sfArgs
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path $OutFile)) {
+  try { if ($proc -and !$proc.HasExited) { $proc.Kill() } } catch {}
+  throw "Single-file generation failed; output not found: $OutFile"
+}
+
+Write-Host "==> Single HTML created: $OutFile  (size: $((Get-Item $OutFile).Length) bytes)"
+
+# Stop server
 try {
-  $tcp = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, $Port)
-  $tcp.Start()
-  $tcp.Stop()
-} catch {
-  $Port = Get-Random -Minimum 8200 -Maximum 8999
-}
-
-# Start a tiny static server for Allure (so fetch() works while we capture the page)
-$serverArgs = @("-y","http-server", $ReportDir, "-p", "$Port", "--silent")
-$serverProc = $null
-try {
-  $serverProc = Start-Process -FilePath "npx" -ArgumentList $serverArgs -PassThru -WindowStyle Hidden
-
-  # Wait until index is reachable
-  $baseUrl  = "http://127.0.0.1:$Port"
-  $indexUrl = "$baseUrl/index.html"
-  $ready = $false
-  for ($i=0; $i -lt 40; $i++) {
-    try {
-      Invoke-WebRequest -Uri $indexUrl -UseBasicParsing -TimeoutSec 2 | Out-Null
-      $ready = $true
-      break
-    } catch {
-      Start-Sleep -Milliseconds 500
-    }
+  if ($proc -and !$proc.HasExited) {
+    $proc.Kill()
   }
-  if (-not $ready) {
-    throw "Local server failed to start on $baseUrl"
-  }
+} catch {}
 
-  # Build args for single-file
-  $singleArgs = @(
-    "single-file-cli", $indexUrl,
-    "-o", $OutFile,
-    "--block-scripts", "false",
-    "--browser-wait-until", "networkIdle",
-    "--browser-wait-until-delay", "1500",
-    "--insert-meta-CSP"
-  )
-  if ($BrowserExe -ne "" -and (Test-Path $BrowserExe)) {
-    $singleArgs += @("--browser-executable-path", $BrowserExe)
-  }
-
-  & npx -y @singleArgs
-  Write-Host "✅ Created $OutFile"
-
-} finally {
-  if ($serverProc -and !$serverProc.HasExited) {
-    try { Stop-Process -Id $serverProc.Id -Force } catch {}
-  }
-}
+exit 0
