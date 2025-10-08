@@ -28,7 +28,7 @@ $baseUrl = "http://127.0.0.1:$port"
 $sfCmd  = "npx"
 $sfArgs = "-y single-file-cli `"$baseUrl/index.html`" -o `"$OutFile`" --block-scripts false --browser-wait-until networkIdle --browser-wait-until-delay 1500"
 & $sfCmd $sfArgs
-
+c
 
 # Health check
 $ok = $false
