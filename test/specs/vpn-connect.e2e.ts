@@ -341,7 +341,7 @@ const GROUP_TXT = process.env.CSC_GROUP || 'Split Inc (AAA)'
 const FLOW = process.env.CURRENT_FLOW || 'Adhoc';
 
 // We will move to the **7th** item to avoid selecting the one above your target
-const GROUP_IDX = Number(process.env.GROUP_INDEX || 7)
+const GROUP_IDX = Number(process.env.GROUP_INDEX || 8)
 // ------------------------------------------------
 
 describe(`${FLOW} - VPN CONNECTION`, () => {
