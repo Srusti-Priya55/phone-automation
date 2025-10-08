@@ -33,15 +33,16 @@ pipeline {
   }
 
   /***********************
-   * ENV / OPTIONS
+   * ENV
    ***********************/
   environment {
     NODE_HOME = "C:\\Program Files\\nodejs"
     PATH      = "${env.NODE_HOME};${env.PATH}"
   }
+
   options {
     timestamps()
-    ansiColor('xterm')
+    // Removed ansiColor because plugin isn’t installed on your Jenkins
   }
 
   stages {
@@ -105,28 +106,23 @@ pipeline {
     stage('Run flows (sequential)') {
       steps {
         script {
-          // Map checkbox -> friendly flow name (used by WDIO -> Allure labels)
           def FLOW = [
             install_adb               : 'Install via ADB',
             install_play              : 'Install via Play Store',
             aggregation_check         : 'Aggregation Check',
             tnd_check                 : 'TND Check',
-
             collection_mode_all       : 'Collection Mode - All',
             collection_mode_trusted   : 'Collection Mode - Trusted',
             collection_mode_untrusted : 'Collection Mode - Untrusted',
-
             interface_info            : 'Interface Info',
             ipfix_disable             : 'IPFIX Disable',
             ipfix_zero                : 'IPFIX Zero',
             parent_process_check      : 'Parent Process Check',
             template_caching_untrusted: 'Template Caching - Untrusted',
             before_after_reboot       : 'Before/After Reboot',
-
             aup_should_displayed      : 'AUP Should Display',
             aup_should_not_displayed  : 'AUP Should NOT Display',
             eula_not_accepted         : 'EULA Not Accepted',
-
             negatives                 : 'Negatives'
           ]
 
@@ -134,7 +130,6 @@ pipeline {
             def flow = FLOW.get(suite, suite)
             echo "=== RUNNING ${suite} [FLOW=${flow}] ==="
             withEnv(["CURRENT_FLOW=${flow}"]) {
-              // continue pipeline even if one suite fails so Allure + email still happen
               catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                 bat "npx wdio run wdio.conf.ts --suite ${suite}"
               }
@@ -197,7 +192,6 @@ pipeline {
     stage('Publish & Archive') {
       steps {
         script {
-          // keep everything downloadable from Jenkins
           archiveArtifacts artifacts: 'allure-results/**, allure-report/**, tools/**, allure-report.single.html', fingerprint: true
 
           def recipients = (params.EMAILS ?: '').trim()
