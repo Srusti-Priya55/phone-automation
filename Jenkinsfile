@@ -143,27 +143,54 @@ parameters {
 
     stage('Make single-file HTML (no server)') {
       steps {
-        // Uses your node tool: tools/pack-allure-onehtml.js
         bat '''
+          echo ==== Build single HTML ====
           if not exist tools\\pack-allure-onehtml.js (
-            echo Missing tools\\pack-allure-onehtml.js & exit /b 1
+            echo Missing tools\\pack-allure-onehtml.js
+            exit /b 1
+          )
+          if not exist allure-report\\index.html (
+            echo Missing allure-report\\index.html
+            exit /b 1
           )
           node tools\\pack-allure-onehtml.js allure-report
-          if errorlevel 1 exit /b 1
           if not exist allure-report\\allure-report.offline.html (
-            echo Single HTML was not created & exit /b 1
+            echo Single HTML not created
+            dir allure-report
+            exit /b 1
           )
-          copy /y "allure-report\\allure-report.offline.html" ".\\allure-report.offline.html" >nul
+          echo Created: allure-report\\allure-report.offline.html
         '''
       }
     }
 
+
     stage('Publish & Archive') {
-      steps {
-        archiveArtifacts artifacts: 'allure-results/**, allure-report/**, allure-report.offline.html', fingerprint: true
+  when { expression { fileExists('allure-report/allure-report.offline.html') } }
+  steps {
+    script {
+      archiveArtifacts artifacts: 'allure-report/**, allure-results/**', fingerprint: true
+
+      if ((params.EMAILS ?: '').trim()) {
+        emailext(
+          from: 'kspriya@cisco.com',                // your sender
+          to: params.EMAILS,
+          subject: "Mobile Sanity • Build #${env.BUILD_NUMBER} • ${currentBuild.currentResult}",
+          mimeType: 'text/plain',
+          body: """Hi Team,
+
+Allure (Jenkins): ${env.BUILD_URL}allure
+Single-file HTML is attached — opens offline on phone & desktop.
+
+Result: ${currentBuild.currentResult}
+""",
+          attachmentsPattern: 'allure-report/allure-report.offline.html'
+        )
       }
     }
   }
+}
+
 
   post {
     always {
