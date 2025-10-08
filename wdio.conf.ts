@@ -180,7 +180,6 @@ export const config: WebdriverIO.Config = {
 
     negatives: [
       'test/specs/neg-Reregister-same-profile.e2e.ts',
-      'test/specs/neg-invalid-profile-push-register.e2e.ts',
       'test/specs/neg-uninstall-not-installed.e2e.ts',
     ],
   },
