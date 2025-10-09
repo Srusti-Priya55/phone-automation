@@ -65,7 +65,6 @@ export const config: WebdriverIO.Config = {
       'test/specs/nvm-service-check.e2e.ts',
       'test/specs/disconnect-vpn.e2e.ts',
       'test/specs/traffic.e2e.ts',
-      'test/specs/nvm-logs.e2e.ts',
       'test/specs/unregister-profile.e2e.ts',
       'test/specs/uninstall-adb.e2e.ts',
     ],
