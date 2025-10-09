@@ -26,10 +26,16 @@
     "appium-uiautomator2-driver": "^5.0.1",
     "chai": "^6.0.1",
     "expect-webdriverio": "^5.4.2",
+    "nodemon": "^3.1.10",
     "prompts": "^2.4.2",
     "rimraf": "^5.0.10",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4",
     "webdriverio": "^9.19.2"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0"
   }
 }
