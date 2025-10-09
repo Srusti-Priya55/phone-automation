@@ -208,6 +208,10 @@ Status: ${currentBuild.currentResult}
 Executed On: ${new Date().format("yyyy-MM-dd HH:mm:ss")}
 Duration: ${currentBuild.durationString.replace(' and counting', '')}
 
+Executed Test Cases:
+${params.RUN_ALL ? 'All test cases executed (RUN_ALL selected)' :
+    (params.collect { k, v -> v && k != 'RUN_ALL' && k != 'EMAILS' ? " - ${k}" : null }.findAll { it != null }.join('\n'))}
+
 Attached: Allure report.
 """,
               attachmentsPattern: 'allure-report.single.html'
