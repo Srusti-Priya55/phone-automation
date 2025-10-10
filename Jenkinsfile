@@ -196,26 +196,42 @@ pipeline {
 
           def recipients = (params.EMAILS ?: '').trim()
           if (recipients) {
+            def status      = currentBuild.currentResult
+            def statusColor = (status == 'SUCCESS') ? '#16a34a' : '#dc2626'   // green / red
+
             emailext(
               to: recipients,
-              subject: "Mobile Sanity  Build #${env.BUILD_NUMBER}  ${currentBuild.currentResult}",
-              mimeType: 'text/plain',
-              body: """Hi Team,
+              subject: "Mobile Sanity  Build #${env.BUILD_NUMBER}  ${status}",
+              mimeType: 'text/html',   // switch to HTML so we can style
+              body: """<html>
+              <body style="font-family:Segoe UI, Arial, sans-serif; font-size:14px; color:#111827;">
+                <p>Hi Team,</p>
 
-This is an automated build status update from the Mobile Automation Suite.
+                <p>This is an automated build status update from the Mobile Automation Suite.</p>
 
-Status: ${currentBuild.currentResult}
-Executed On: ${new Date().format("yyyy-MM-dd HH:mm:ss")}
-Duration: ${currentBuild.durationString.replace(' and counting', '')}
+                <p><strong>Status:</strong>
+                  <span style="font-weight:700; color:${statusColor};">${status}</span>
+                </p>
 
-Executed Test Cases:
-${params.RUN_ALL ? 'All test cases executed (RUN_ALL selected)' :
-    (params.collect { k, v -> v && k != 'RUN_ALL' && k != 'EMAILS' ? " - ${k}" : null }.findAll { it != null }.join('\n'))}
+                <p>
+                  <strong>Executed On:</strong> ${new Date().format("yyyy-MM-dd HH:mm:ss")}<br/>
+                  <strong>Duration:</strong> ${currentBuild.durationString.replace(' and counting', '')}
+                </p>
 
-Attached: Allure report.
-""",
+                <p><strong>Executed Test Cases:</strong></p>
+                <pre style="background:#f8fafc;border:1px solid #e5e7eb;padding:8px;border-radius:6px;white-space:pre-wrap;margin:0;">
+            ${params.RUN_ALL ? 'All test cases executed (RUN_ALL selected)' :
+                (params.collect { k, v -> v && k != 'RUN_ALL' && k != 'EMAILS' ? " - ${k}" : null }
+                      .findAll { it != null }
+                      .join('\\n'))}
+                </pre>
+
+                <p style="margin-top:12px;">Attached: <em>allure-report.single.html</em>.</p>
+              </body>
+            </html>""",
               attachmentsPattern: 'allure-report.single.html'
             )
+
           } else {
             echo 'EMAILS empty — skipping email.'
           }

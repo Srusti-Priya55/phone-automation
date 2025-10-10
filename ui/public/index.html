@@ -49,7 +49,6 @@
     }
     header h1{margin:0; font-size:20px; display:flex; gap:10px; align-items:center}
     .logo{width:32px;height:32px;border-radius:10px;background:conic-gradient(from 0deg,#6366f1,#22c55e,#06b6d4,#6366f1); box-shadow:0 0 0 2px #ffffffaa inset}
-    .tag{font-size:12px;color:var(--muted)}
     main{padding:20px; display:grid; gap:16px}
     .grid{display:grid; gap:16px}
     @media (min-width:900px){ .grid-2{grid-template-columns:1.25fr .75fr} }
@@ -89,14 +88,13 @@
     <main>
       <form id="launcher" novalidate>
         <div class="grid grid-2">
-          <!-- SUITES -->
+          <!-- LEFT: SUITES (unchanged) -->
           <section aria-labelledby="suites-h">
             <h2 id="suites-h">Suites</h2>
             <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
               <label class="switch"><input type="checkbox" id="runAll"> <strong>Run ALL</strong></label>
             </div>
             <div class="checkbox-grid" id="suiteGrid">
-              <!-- 16 suites (match WDIO exactly) -->
               <label class="chk"><input type="checkbox" name="install_adb"> <span>install_adb</span></label>
               <label class="chk"><input type="checkbox" name="install_play"> <span>install_play</span></label>
               <label class="chk"><input type="checkbox" name="aggregation_check"> <span>aggregation_check</span></label>
@@ -117,17 +115,11 @@
             </div>
           </section>
 
-          <!-- DELIVERY & SCHEDULING -->
-          <section aria-labelledby="delivery-h">
-            <h2 id="delivery-h">Delivery & Scheduling</h2>
+          <!-- RIGHT: Run/Schedule first, then Email -->
+          <section>
+            <!-- (no title here as requested) -->
 
-            <!-- Emails -->
-            <div class="chips" id="emailChips" aria-label="Email recipients">
-              <input id="emailInput" type="text" placeholder="Add email and press Enter" autocomplete="off" />
-            </div>
-            <div id="emailErr" class="error">Enter a valid email.</div>
-
-            <!-- Mode -->
+            <!-- Run / Schedule -->
             <div class="row" style="margin:12px 0 6px">
               <label class="switch"><input type="radio" name="mode" value="now" checked> <strong>Run Now</strong></label>
               <label class="switch"><input type="radio" name="mode" value="schedule"> <strong>Schedule</strong></label>
@@ -170,11 +162,18 @@
                 </div>
               </div>
             </div>
+
+            <!-- Email (moved below) -->
+            <h2 style="margin-top:14px">Email</h2>
+            <div class="chips" id="emailChips" aria-label="Email recipients">
+              <input id="emailInput" type="text" placeholder="Add email and press Enter" autocomplete="off" />
+            </div>
+            <div id="emailErr" class="error">Enter a valid email.</div>
           </section>
         </div>
 
         <div class="bar">
-          <button type="button" class="btn btn-ghost" id="resetBtn">Reset</button>
+          <button type="button" class="btn btn-ghost" id="resetBtn">Clear</button>
           <button type="submit" class="btn btn-green" id="runBtn">Run</button>
           <button type="button" class="btn btn-accent" id="scheduleBtn">Schedule</button>
         </div>
@@ -185,7 +184,6 @@
   </div>
 
   <script>
-    // -------- helpers --------
     const $ = (q,root=document)=>root.querySelector(q);
     const $$ = (q,root=document)=>Array.from(root.querySelectorAll(q));
     const emailRe=/^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
@@ -206,13 +204,11 @@
     const toast=$('#toast');
     const runBtn=$('#runBtn'), scheduleBtn=$('#scheduleBtn'), resetBtn=$('#resetBtn');
 
-    // Run ALL toggle
     runAll.addEventListener('change', ()=> {
       const on=runAll.checked;
       suiteBoxes.forEach(b=>{ b.checked=on; b.disabled=on; });
     });
 
-    // Emails as chips
     function addEmailChip(val){
       const v=(val||'').trim();
       if(!v) return;
@@ -235,7 +231,6 @@
     });
     emailInput.addEventListener('blur',()=>addEmailChip(emailInput.value));
 
-    // Mode & schedule
     $$('input[name="mode"]').forEach(r=>r.addEventListener('change',()=>{
       scheduleBox.style.display = $('input[name="mode"][value="schedule"]').checked ? 'block':'none';
     }));
@@ -246,7 +241,6 @@
       if(scheduleType.value==='weekly') weeklyBox.style.display='block';
     });
 
-    // Defaults
     try{
       const d=new Date(Date.now()+2*60*1000); d.setSeconds(0,0);
       const p=n=>String(n).padStart(2,'0');
@@ -266,7 +260,6 @@
       $('input[name="mode"][value="now"]').checked=true; scheduleBox.style.display='none';
     });
 
-    // Submit
     $('#launcher').addEventListener('submit', (e)=>{ e.preventDefault(); runFormSubmit(false); });
 
     async function runFormSubmit(forceSchedule){
