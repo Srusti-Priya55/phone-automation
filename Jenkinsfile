@@ -247,12 +247,13 @@ pipeline {
     </p>
 
     <p><strong>Executed Test Cases:</strong></p>
-    <pre style="background:#f8fafc;border:1px solid #e5e7eb;padding:8px;border-radius:6px;white-space:pre-wrap;margin:0;">
+  <pre style="background:#f8fafc;border:1px solid #e5e7eb;padding:8px;border-radius:6px;white-space:pre-wrap;margin:0;">
 ${params.RUN_ALL ? 'All test cases executed (RUN_ALL selected)' :
     (params.collect { k, v -> v && k != 'RUN_ALL' && k != 'EMAILS' ? " - ${k}" : null }
           .findAll { it != null }
-          .join('\\n'))}
-    </pre>
+          .join('\n'))}
+  </pre>
+
 
     ${perSuiteHtml}
 
