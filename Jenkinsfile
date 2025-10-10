@@ -1,9 +1,6 @@
 pipeline {
   agent any
 
-  /***********************
-   * PARAMETERS (17 flows)
-   ***********************/
   parameters {
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all flows')
 
@@ -11,39 +8,28 @@ pipeline {
     booleanParam(name: 'install_play',               defaultValue: false, description: '')
     booleanParam(name: 'aggregation_check',          defaultValue: false, description: '')
     booleanParam(name: 'tnd_check',                  defaultValue: false, description: '')
-
     booleanParam(name: 'collection_mode_all',        defaultValue: false, description: '')
     booleanParam(name: 'collection_mode_trusted',    defaultValue: false, description: '')
     booleanParam(name: 'collection_mode_untrusted',  defaultValue: false, description: '')
-
     booleanParam(name: 'interface_info',             defaultValue: false, description: '')
     booleanParam(name: 'ipfix_disable',              defaultValue: false, description: '')
     booleanParam(name: 'ipfix_zero',                 defaultValue: false, description: '')
     booleanParam(name: 'parent_process_check',       defaultValue: false, description: '')
     booleanParam(name: 'template_caching_untrusted', defaultValue: false, description: '')
     booleanParam(name: 'before_after_reboot',        defaultValue: false, description: '')
-
     booleanParam(name: 'aup_should_displayed',       defaultValue: false, description: '')
     booleanParam(name: 'aup_should_not_displayed',   defaultValue: false, description: '')
     booleanParam(name: 'eula_not_accepted',          defaultValue: false, description: '')
-
     booleanParam(name: 'negatives',                  defaultValue: false, description: '')
-
     string(name: 'EMAILS', defaultValue: '', description: 'Recipients (comma-separated)')
   }
 
-  /***********************
-   * ENV
-   ***********************/
   environment {
     NODE_HOME = "C:\\Program Files\\nodejs"
     PATH      = "${env.NODE_HOME};${env.PATH}"
   }
 
-  options {
-    timestamps()
-    // Removed ansiColor because plugin isn’t installed on your Jenkins
-  }
+  options { timestamps() }
 
   stages {
 
@@ -133,7 +119,6 @@ pipeline {
             echo "=== RUNNING ${suite} [FLOW=${flow}] ==="
             int code = 1
             withEnv(["CURRENT_FLOW=${flow}"]) {
-              // capture exit code but still mark build/stage on error
               catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                 code = bat(returnStatus: true, script: "npx wdio run wdio.conf.ts --suite ${suite}")
                 if (code != 0) {
@@ -142,14 +127,13 @@ pipeline {
               }
             }
             def status = (code == 0) ? 'SUCCESS' : 'FAILURE'
-            results << [suite: suite, name: flow, status: status]
+            results << [name: flow, status: status]
           }
 
-          // Save per-suite results for the email stage
-          writeFile file: 'suite_results.json',
-                   text: groovy.json.JsonOutput.toJson(results)
+          // Save per-suite results in plain text (sandbox-safe)
+          def lines = results.collect { r -> "${r.name}|${r.status}" }.join('\n')
+          writeFile file: 'suite_results.txt', text: lines
         }
-
       }
     }
 
@@ -206,21 +190,24 @@ pipeline {
     stage('Publish & Archive') {
       steps {
         script {
-          archiveArtifacts artifacts: 'allure-results/**, allure-report/**, tools/**, allure-report.single.html', fingerprint: true
+          archiveArtifacts artifacts: 'allure-results/**, allure-report/**, tools/**, allure-report.single.html, suite_results.txt', fingerprint: true
 
           def recipients = (params.EMAILS ?: '').trim()
           if (recipients) {
 
-            // Build a per-suite HTML table if we have results
+            // Build a per-suite HTML table
             def perSuiteHtml = ''
-            if (fileExists('suite_results.json')) {
-              def res = new groovy.json.JsonSlurper().parseText(readFile('suite_results.json'))
-              def rows = res.collect { r ->
-                def color = (r.status == 'SUCCESS') ? '#16a34a' : '#dc2626' // green / red
+            if (fileExists('suite_results.txt')) {
+              def lines = readFile('suite_results.txt').trim().split(/\r?\n/)
+              def rows = lines.collect { line ->
+                def parts = line.split('\\|', 2)
+                def name = parts[0]
+                def status = parts.size() > 1 ? parts[1] : ''
+                def color = (status == 'SUCCESS') ? '#16a34a' : '#dc2626'
                 """
                 <tr>
-                  <td style="padding:6px 10px;border:1px solid #e5e7eb;">${r.name}</td>
-                  <td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:700;color:${color};">${r.status}</td>
+                  <td style="padding:6px 10px;border:1px solid #e5e7eb;">${name}</td>
+                  <td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:700;color:${color};">${status}</td>
                 </tr>
                 """
               }.join('\n')
@@ -277,7 +264,6 @@ ${params.RUN_ALL ? 'All test cases executed (RUN_ALL selected)' :
           } else {
             echo 'EMAILS empty — skipping email.'
           }
-
         }
       }
     }
