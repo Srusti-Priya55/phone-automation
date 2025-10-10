@@ -126,16 +126,30 @@ pipeline {
             negatives                 : 'Negatives'
           ]
 
+          def results = []
+
           for (suite in env.CHOSEN.split(',')) {
             def flow = FLOW.get(suite, suite)
             echo "=== RUNNING ${suite} [FLOW=${flow}] ==="
+            int code = 1
             withEnv(["CURRENT_FLOW=${flow}"]) {
+              // capture exit code but still mark build/stage on error
               catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                bat "npx wdio run wdio.conf.ts --suite ${suite}"
+                code = bat(returnStatus: true, script: "npx wdio run wdio.conf.ts --suite ${suite}")
+                if (code != 0) {
+                  error "Suite ${suite} failed"
+                }
               }
             }
+            def status = (code == 0) ? 'SUCCESS' : 'FAILURE'
+            results << [suite: suite, name: flow, status: status]
           }
+
+          // Save per-suite results for the email stage
+          writeFile file: 'suite_results.json',
+                   text: groovy.json.JsonOutput.toJson(results)
         }
+
       }
     }
 
@@ -196,45 +210,74 @@ pipeline {
 
           def recipients = (params.EMAILS ?: '').trim()
           if (recipients) {
+
+            // Build a per-suite HTML table if we have results
+            def perSuiteHtml = ''
+            if (fileExists('suite_results.json')) {
+              def res = new groovy.json.JsonSlurper().parseText(readFile('suite_results.json'))
+              def rows = res.collect { r ->
+                def color = (r.status == 'SUCCESS') ? '#16a34a' : '#dc2626' // green / red
+                """
+                <tr>
+                  <td style="padding:6px 10px;border:1px solid #e5e7eb;">${r.name}</td>
+                  <td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:700;color:${color};">${r.status}</td>
+                </tr>
+                """
+              }.join('\n')
+
+              perSuiteHtml = """
+              <p><strong>Per-suite results:</strong></p>
+              <table style="border-collapse:collapse;font-family:Segoe UI,Arial,sans-serif;font-size:13px">
+                <tr>
+                  <th style="text-align:left;padding:8px 10px;border:1px solid #e5e7eb;background:#f3f4f6;">Test</th>
+                  <th style="text-align:left;padding:8px 10px;border:1px solid #e5e7eb;background:#f3f4f6;">Result</th>
+                </tr>
+                ${rows}
+              </table>
+              """
+            }
+
             def status      = currentBuild.currentResult
-            def statusColor = (status == 'SUCCESS') ? '#16a34a' : '#dc2626'   // green / red
+            def statusColor = (status == 'SUCCESS') ? '#16a34a' : '#dc2626'
 
             emailext(
               to: recipients,
               subject: "Mobile Sanity  Build #${env.BUILD_NUMBER}  ${status}",
-              mimeType: 'text/html',   // switch to HTML so we can style
+              mimeType: 'text/html',
               body: """<html>
-              <body style="font-family:Segoe UI, Arial, sans-serif; font-size:14px; color:#111827;">
-                <p>Hi Team,</p>
+  <body style="font-family:Segoe UI, Arial, sans-serif; font-size:14px; color:#111827;">
+    <p>Hi Team,</p>
 
-                <p>This is an automated build status update from the Mobile Automation Suite.</p>
+    <p>This is an automated build status update from the Mobile Automation Suite.</p>
 
-                <p><strong>Status:</strong>
-                  <span style="font-weight:700; color:${statusColor};">${status}</span>
-                </p>
+    <p><strong>Status:</strong>
+       <span style="font-weight:700; color:${statusColor};">${status}</span>
+    </p>
 
-                <p>
-                  <strong>Executed On:</strong> ${new Date().format("yyyy-MM-dd HH:mm:ss")}<br/>
-                  <strong>Duration:</strong> ${currentBuild.durationString.replace(' and counting', '')}
-                </p>
+    <p>
+      <strong>Executed On:</strong> ${new Date().format("yyyy-MM-dd HH:mm:ss")}<br/>
+      <strong>Duration:</strong> ${currentBuild.durationString.replace(' and counting', '')}
+    </p>
 
-                <p><strong>Executed Test Cases:</strong></p>
-                <pre style="background:#f8fafc;border:1px solid #e5e7eb;padding:8px;border-radius:6px;white-space:pre-wrap;margin:0;">
-            ${params.RUN_ALL ? 'All test cases executed (RUN_ALL selected)' :
-                (params.collect { k, v -> v && k != 'RUN_ALL' && k != 'EMAILS' ? " - ${k}" : null }
-                      .findAll { it != null }
-                      .join('\\n'))}
-                </pre>
+    <p><strong>Executed Test Cases:</strong></p>
+    <pre style="background:#f8fafc;border:1px solid #e5e7eb;padding:8px;border-radius:6px;white-space:pre-wrap;margin:0;">
+${params.RUN_ALL ? 'All test cases executed (RUN_ALL selected)' :
+    (params.collect { k, v -> v && k != 'RUN_ALL' && k != 'EMAILS' ? " - ${k}" : null }
+          .findAll { it != null }
+          .join('\\n'))}
+    </pre>
 
-                <p style="margin-top:12px;">Attached: <em>allure-report.single.html</em>.</p>
-              </body>
-            </html>""",
+    ${perSuiteHtml}
+
+    <p style="margin-top:12px;">Attached: <em>allure-report.single.html</em>.</p>
+  </body>
+</html>""",
               attachmentsPattern: 'allure-report.single.html'
             )
-
           } else {
             echo 'EMAILS empty — skipping email.'
           }
+
         }
       }
     }
