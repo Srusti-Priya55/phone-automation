@@ -1,7 +1,48 @@
+// ──────────────────────────────────────────────────────────────
+// Dynamic Scheduling + Full Mobile Automation Jenkinsfile
+// Requires: Active Choices Plugin, Active Choices Reactive Parameter
+// Safe for Production or Local Jenkins Server
+// ──────────────────────────────────────────────────────────────
+
 pipeline {
     agent any
 
+    // ──────────────────────────────────────────────────────────
+    // Parameters (Scheduling + Existing Flow)
+    // ──────────────────────────────────────────────────────────
     parameters {
+        // ===== Dynamic Scheduling (Web-UI-like) =====
+        choice(
+            name: 'SCHEDULE_OPTION',
+            choices: ['Run Now', 'Schedule Once', 'Recurring Schedule'],
+            description: 'Select when to run this automation'
+        )
+
+        activeChoiceReactiveParam('SCHEDULE_FIELDS') {
+            description('Dynamic scheduling options based on selection')
+            groovyScript {
+                script("""
+                    if (SCHEDULE_OPTION == "Run Now") {
+                        return ["No scheduling — run immediately"]
+                    } else if (SCHEDULE_OPTION == "Schedule Once") {
+                        return ["Enter Date (YYYY-MM-DD)", "Enter Time (HH:mm)"]
+                    } else if (SCHEDULE_OPTION == "Recurring Schedule") {
+                        return ["Frequency (Daily/Weekly)", "Day (if Weekly)", "Time (HH:mm)"]
+                    } else {
+                        return ["Invalid selection"]
+                    }
+                """)
+                fallbackScript("return ['Unable to load options']")
+            }
+        }
+
+        string(name: 'SCHEDULE_DATE', defaultValue: '', description: 'Date if "Schedule Once" selected (YYYY-MM-DD)')
+        string(name: 'SCHEDULE_TIME', defaultValue: '09:00', description: 'Time (HH:mm)')
+        choice(name: 'RECUR_FREQUENCY', choices: ['Daily', 'Weekly'], description: 'Frequency for recurring')
+        choice(name: 'RECUR_DAY', choices: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+               description: 'Day for weekly recurrence')
+
+        // ===== Existing flow parameters =====
         booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all flows')
         booleanParam(name: 'install_adb', defaultValue: false, description: '')
         booleanParam(name: 'install_play', defaultValue: false, description: '')
@@ -21,66 +62,46 @@ pipeline {
         booleanParam(name: 'eula_not_accepted', defaultValue: false, description: '')
         booleanParam(name: 'negatives', defaultValue: false, description: '')
         string(name: 'EMAILS', defaultValue: '', description: 'Recipients (comma-separated)')
-
-        // 🕒 Scheduling parameters (clean version)
-        choice(
-            name: 'SCHEDULE_OPTION',
-            choices: ['Run Now', 'Schedule Once', 'Recurring Schedule'],
-            description: 'Select when to run this automation'
-        )
-        string(name: 'SCHEDULE_DATE', defaultValue: '', description: 'Enter date (YYYY-MM-DD) — only for "Schedule Once"')
-        string(name: 'SCHEDULE_TIME', defaultValue: '09:00', description: 'Enter time (HH:mm)')
-        choice(name: 'RECUR_FREQUENCY', choices: ['Daily', 'Weekly'], description: 'Only used if "Recurring Schedule" is selected')
-        choice(name: 'RECUR_DAY', choices: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], description: 'Used only if Weekly is selected')
     }
 
+    // ──────────────────────────────────────────────────────────
     environment {
         NODE_HOME = "C:\\Program Files\\nodejs"
         PATH = "${env.NODE_HOME};${env.PATH}"
     }
 
-    options {
-        timestamps()
-    }
+    options { timestamps() }
 
+    // ──────────────────────────────────────────────────────────
     stages {
-
-        // 🧭 Handle scheduling logic with validation (Option A)
+        // Scheduling Logic
         stage('Handle Schedule Option') {
             steps {
                 script {
-                    def option = params.SCHEDULE_OPTION
-                    echo "Selected scheduling option: ${option}"
+                    def opt = params.SCHEDULE_OPTION
+                    echo "🕒 Schedule option selected: ${opt}"
 
-                    if (option == 'Run Now') {
-                        echo "✅ Running immediately..."
-                    }
-                    else if (option == 'Schedule Once') {
+                    if (opt == 'Run Now') {
+                        echo "▶️ Running immediately..."
+                    } else if (opt == 'Schedule Once') {
                         if (!params.SCHEDULE_DATE?.trim()) {
-                            error "❌ Missing SCHEDULE_DATE for Schedule Once. Please fill it before running."
+                            error "❌ Missing SCHEDULE_DATE — please fill it before running."
                         }
-                        echo "📅 Scheduling one-time build for ${params.SCHEDULE_DATE} at ${params.SCHEDULE_TIME}"
-                        echo "This will be used by the Jenkins scheduler (manual cron setup)."
-                    }
-                    else if (option == 'Recurring Schedule') {
-                        echo "🔁 Recurring Schedule Selected"
+                        echo "📅 One-time schedule for ${params.SCHEDULE_DATE} at ${params.SCHEDULE_TIME}"
+                    } else if (opt == 'Recurring Schedule') {
+                        echo "🔁 Recurring schedule selected"
                         echo "Frequency: ${params.RECUR_FREQUENCY}"
                         if (params.RECUR_FREQUENCY == 'Weekly') {
-                            echo "Day of week: ${params.RECUR_DAY}"
+                            echo "Day: ${params.RECUR_DAY}"
                         }
                         echo "Time: ${params.SCHEDULE_TIME}"
-                        echo "Please configure Jenkins cron accordingly."
                     }
-
-                    echo "ℹ️ (Note: Jenkins UI cannot hide unused fields dynamically. Unused values will be ignored automatically.)"
                 }
             }
         }
 
         stage('Checkout') {
-            steps {
-                checkout scm
-            }
+            steps { checkout scm }
         }
 
         stage('Agent sanity') {
@@ -126,10 +147,8 @@ pipeline {
                         'template_caching_untrusted','before_after_reboot',
                         'aup_should_displayed','aup_should_not_displayed','eula_not_accepted','negatives'
                     ]
-
                     def chosen = params.RUN_ALL ? all : all.findAll { params[it] }
                     if (!chosen) error 'No flows selected — pick at least one or enable RUN_ALL'
-
                     env.CHOSEN = chosen.join(',')
                     echo "Flows selected: ${env.CHOSEN}"
                 }
@@ -167,17 +186,13 @@ pipeline {
                         withEnv(["CURRENT_FLOW=${flow}"]) {
                             catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                                 code = bat(returnStatus: true, script: "npx wdio run wdio.conf.ts --suite ${suite}")
-                                if (code != 0) {
-                                    error "Suite ${suite} failed"
-                                }
+                                if (code != 0) { error "Suite ${suite} failed" }
                             }
                         }
                         def status = (code == 0) ? 'SUCCESS' : 'FAILURE'
                         results << [name: flow, status: status]
                     }
-
-                    def lines = results.collect { r -> "${r.name}|${r.status}" }.join('\n')
-                    writeFile file: 'suite_results.txt', text: lines
+                    writeFile file: 'suite_results.txt', text: results.collect { r -> "${r.name}|${r.status}" }.join('\n')
                 }
             }
         }
@@ -240,24 +255,18 @@ pipeline {
                         }
 
                         def status = currentBuild.currentResult
-                        def statusColor = (status == 'SUCCESS') ? '#16a34a' : '#dc2626'
-
+                        def color = (status == 'SUCCESS') ? '#16a34a' : '#dc2626'
                         emailext(
                             to: recipients,
                             subject: "Mobile Sanity Build #${env.BUILD_NUMBER} ${status}",
                             mimeType: 'text/html',
                             body: """
                                 <p>Hi Team,</p>
-                                <p>This is an automated build status update from the Mobile Automation Suite.</p>
-                                <p><b>Status:</b> <span style='color:${statusColor}'>${status}</span></p>
-                                <p><b>Executed On:</b> ${new Date().format("yyyy-MM-dd HH:mm:ss")}</p>
-                                <p><b>Duration:</b> ${currentBuild.durationString.replace(' and counting', '')}</p>
-                                <p><b>Executed Test Cases:</b></p>
-                                <pre>${params.RUN_ALL ? 'All test cases executed (RUN_ALL selected)' :
-                                    (params.collect { k, v -> v && k != 'RUN_ALL' && k != 'EMAILS' ? " - ${k}" : null }
-                                    .findAll { it != null }.join('\n'))}</pre>
+                                <p>Status: <b><span style='color:${color}'>${status}</span></b></p>
+                                <p>Executed On: ${new Date().format("yyyy-MM-dd HH:mm:ss")}</p>
+                                <p>Duration: ${currentBuild.durationString.replace(' and counting','')}</p>
                                 ${perSuiteHtml}
-                                <p><b>Attached:</b> allure-report.single.html</p>
+                                <p>Attached: allure-report.single.html</p>
                             """,
                             attachmentsPattern: 'allure-report.single.html'
                         )
