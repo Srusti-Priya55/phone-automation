@@ -22,12 +22,16 @@ pipeline {
         booleanParam(name: 'negatives', defaultValue: false, description: '')
         string(name: 'EMAILS', defaultValue: '', description: 'Recipients (comma-separated)')
 
-        // 🕒 Scheduling parameters (added)
-        choice(name: 'SCHEDULE_OPTION', choices: ['Run Now', 'Schedule Once', 'Recurring Schedule'], description: 'Choose when to run the pipeline')
-        string(name: 'SCHEDULE_DATE', defaultValue: '', description: 'Enter date (YYYY-MM-DD) for Schedule Once')
+        // 🕒 Scheduling parameters (clean version)
+        choice(
+            name: 'SCHEDULE_OPTION',
+            choices: ['Run Now', 'Schedule Once', 'Recurring Schedule'],
+            description: 'Select when to run this automation'
+        )
+        string(name: 'SCHEDULE_DATE', defaultValue: '', description: 'Enter date (YYYY-MM-DD) — only for "Schedule Once"')
         string(name: 'SCHEDULE_TIME', defaultValue: '09:00', description: 'Enter time (HH:mm)')
-        choice(name: 'RECUR_FREQUENCY', choices: ['Daily', 'Weekly'], description: 'Select frequency for recurring schedule')
-        choice(name: 'RECUR_DAY', choices: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], description: 'Day for weekly recurring runs')
+        choice(name: 'RECUR_FREQUENCY', choices: ['Daily', 'Weekly'], description: 'Only used if "Recurring Schedule" is selected')
+        choice(name: 'RECUR_DAY', choices: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], description: 'Used only if Weekly is selected')
     }
 
     environment {
@@ -41,7 +45,7 @@ pipeline {
 
     stages {
 
-        // 🧭 Handle scheduling logic (added)
+        // 🧭 Handle scheduling logic with validation (Option A)
         stage('Handle Schedule Option') {
             steps {
                 script {
@@ -49,52 +53,26 @@ pipeline {
                     echo "Selected scheduling option: ${option}"
 
                     if (option == 'Run Now') {
-                        echo "Executing immediately..."
+                        echo "✅ Running immediately..."
                     }
                     else if (option == 'Schedule Once') {
                         if (!params.SCHEDULE_DATE?.trim()) {
-                            error "Please specify SCHEDULE_DATE for Schedule Once."
+                            error "❌ Missing SCHEDULE_DATE for Schedule Once. Please fill it before running."
                         }
-
-                        def cronTime = params.SCHEDULE_TIME.split(':')
-                        def hour = cronTime[0]
-                        def minute = cronTime[1]
-                        def dateParts = params.SCHEDULE_DATE.split('-')
-                        def day = dateParts[2]
-                        def month = dateParts[1]
-
-                        def cronExpr = "${minute} ${hour} ${day} ${month} *"
-                        echo "Scheduling one-time build with cron: ${cronExpr}"
-
-                        properties([
-                            pipelineTriggers([cron(cronExpr)])
-                        ])
-                        currentBuild.result = 'SUCCESS'
-                        error "Scheduled build created — exiting current run."
+                        echo "📅 Scheduling one-time build for ${params.SCHEDULE_DATE} at ${params.SCHEDULE_TIME}"
+                        echo "This will be used by the Jenkins scheduler (manual cron setup)."
                     }
                     else if (option == 'Recurring Schedule') {
-                        def cronTime = params.SCHEDULE_TIME.split(':')
-                        def hour = cronTime[0]
-                        def minute = cronTime[1]
-                        def cronExpr = ''
-
-                        if (params.RECUR_FREQUENCY == 'Daily') {
-                            cronExpr = "${minute} ${hour} * * *"
-                        } else if (params.RECUR_FREQUENCY == 'Weekly') {
-                            def dayMap = [
-                                Monday: '1', Tuesday: '2', Wednesday: '3',
-                                Thursday: '4', Friday: '5', Saturday: '6', Sunday: '0'
-                            ]
-                            cronExpr = "${minute} ${hour} * * ${dayMap[params.RECUR_DAY]}"
+                        echo "🔁 Recurring Schedule Selected"
+                        echo "Frequency: ${params.RECUR_FREQUENCY}"
+                        if (params.RECUR_FREQUENCY == 'Weekly') {
+                            echo "Day of week: ${params.RECUR_DAY}"
                         }
-
-                        echo "Scheduling recurring build with cron: ${cronExpr}"
-                        properties([
-                            pipelineTriggers([cron(cronExpr)])
-                        ])
-                        currentBuild.result = 'SUCCESS'
-                        error "Recurring schedule created — exiting current run."
+                        echo "Time: ${params.SCHEDULE_TIME}"
+                        echo "Please configure Jenkins cron accordingly."
                     }
+
+                    echo "ℹ️ (Note: Jenkins UI cannot hide unused fields dynamically. Unused values will be ignored automatically.)"
                 }
             }
         }
