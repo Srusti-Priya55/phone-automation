@@ -2,18 +2,6 @@ pipeline {
   agent any
 
   parameters {
-    // ==== Scheduling UI (new) ====
-    choice(name: 'SCHEDULE_MODE',
-           choices: ['Run now', 'Schedule once', 'Recurring'],
-           description: 'How to run this build')
-    string(name: 'ONCE_DATE', defaultValue: 'YYYY-MM-DD',
-           description: 'For "Schedule once": local date, e.g. 2025-10-13')
-    string(name: 'ONCE_TIME', defaultValue: 'HH:mm',
-           description: 'For "Schedule once": 24h time, e.g. 21:35')
-    string(name: 'RECUR_CRON', defaultValue: 'H 3 * * 1-5',
-           description: 'For "Recurring": Jenkins cron (e.g. H 3 * * 1-5)')
-
-    // ==== Your existing parameters (unchanged) ====
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all flows')
 
     booleanParam(name: 'install_adb',                defaultValue: false, description: '')
@@ -44,102 +32,6 @@ pipeline {
   options { timestamps() }
 
   stages {
-
-    // ====================== NEW: scheduling gate ======================
-    stage('Resolve scheduling mode') {
-      steps {
-        script {
-          def mode = (params.SCHEDULE_MODE ?: 'Run now').trim()
-
-          if (mode == 'Run now') {
-            echo "[Scheduler] Mode=Run now → continue this build now."
-            currentBuild.description = "Run now"
-          }
-
-          else if (mode == 'Schedule once') {
-            def d = (params.ONCE_DATE ?: '').trim()
-            def t = (params.ONCE_TIME ?: '').trim()
-            if (!d || !t || !(d ==~ /\d{4}-\d{2}-\d{2}/) || !(t ==~ /\d{2}:\d{2}/)) {
-              error "Invalid ONCE_DATE/ONCE_TIME. Expect YYYY-MM-DD and HH:mm (24h). Got '${d} ${t}'."
-            }
-
-            def now    = java.time.ZonedDateTime.now()
-            def target = java.time.ZonedDateTime.of(
-                            java.time.LocalDate.parse(d),
-                            java.time.LocalTime.parse(t),
-                            now.getZone()
-                         )
-            def delaySec = java.time.Duration.between(now, target).getSeconds()
-            if (delaySec < 0) {
-              echo "[Scheduler] Target is in the past — shifting to NEXT DAY same time."
-              target   = target.plusDays(1)
-              delaySec = java.time.Duration.between(now, target).getSeconds()
-            }
-            echo "[Scheduler] Will schedule a NEW build at ${target} (delay=${delaySec}s)."
-
-            // Rebuild THIS job with ALL current parameters, in the future
-            def paramList = []
-            [
-              'SCHEDULE_MODE','ONCE_DATE','ONCE_TIME','RECUR_CRON',
-              'RUN_ALL','install_adb','install_play','aggregation_check','tnd_check',
-              'collection_mode_all','collection_mode_trusted','collection_mode_untrusted',
-              'interface_info','ipfix_disable','ipfix_zero','parent_process_check',
-              'template_caching_untrusted','before_after_reboot',
-              'aup_should_displayed','aup_should_not_displayed','eula_not_accepted',
-              'negatives','EMAILS'
-            ].each { n ->
-              if (params.containsKey(n)) {
-                def v = params[n]
-                if (v instanceof Boolean) {
-                  paramList << booleanParam(name: n, value: v)
-                } else {
-                  paramList << string(name: n, value: v?.toString() ?: '')
-                }
-              }
-            }
-
-            build job: env.JOB_NAME,
-                  parameters: paramList,
-                  quietPeriod: delaySec as int,
-                  wait: false
-
-            currentBuild.description = "Scheduled once: ${d} ${t}"
-            echo "[Scheduler] Scheduled. Stopping THIS controller build."
-            error("Scheduled a future run; stopping now.")
-          }
-
-          else if (mode == 'Recurring') {
-            def cron = (params.RECUR_CRON ?: '').trim()
-            if (!cron) error "RECUR_CRON is empty. Provide a Jenkins cron expression."
-
-            // ---- OPTION A (safe-by-default): instruct the user ----
-            echo """
-[Scheduler] Recurring requested.
-Open Job → Configure → Build periodically and paste this cron:
-${cron}
-
-Tip: If you install 'Parameterized Scheduler' plugin, use
-'Build periodically with parameters' to also pass suite flags.
-"""
-            currentBuild.description = "Recurring requested: ${cron}"
-            error("Recurring schedule not auto-applied (safe mode).")
-
-            /* ---- OPTION B (auto-apply cron to THIS job) ----
-            // WARNING: This modifies job config for everyone until removed.
-            properties([ pipelineTriggers([ cron(cron) ]) ])
-            echo "[Scheduler] Applied cron trigger '${cron}' to this job. Stopping this run."
-            currentBuild.description = "Cron: ${cron}"
-            error("Cron trigger set; future runs will start by cron.")
-            */
-          }
-
-          else {
-            error "Unknown SCHEDULE_MODE: ${mode}"
-          }
-        }
-      }
-    }
-    // =================== /NEW: scheduling gate =======================
 
     stage('Checkout') {
       steps { checkout scm }
