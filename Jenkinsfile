@@ -1,28 +1,7 @@
 pipeline {
   agent any
 
-  /***********************
-   *  NEW: scheduling params (simple strings/choices so it works even without plugins)
-   ***********************/
   parameters {
-    // TOP switch like your web UI
-    choice(name: 'SCHEDULE_MODE', choices: ['Run now', 'Schedule'], description: 'Run immediately or schedule')
-
-    // If SCHEDULE_MODE=Schedule, pick type
-    choice(name: 'SCHEDULE_TYPE', choices: ['(not used)', 'Once', 'Everyday', 'Weekly'], description: 'Schedule type when SCHEDULE_MODE=Schedule')
-
-    // ONCE run (local Jenkins time)
-    string(name: 'ONCE_DATE', defaultValue: '', description: 'Once: YYYY-MM-DD (e.g. 2025-10-15)')
-    string(name: 'ONCE_TIME', defaultValue: '', description: 'Once: HH:mm (24h, e.g. 21:30)')
-
-    // Every day at the same time (local Jenkins time)
-    string(name: 'EVERY_TIME', defaultValue: '', description: 'Everyday: HH:mm (24h)')
-
-    // Weekly: comma days + time (local Jenkins time)
-    string(name: 'WEEK_DAYS', defaultValue: '', description: 'Weekly: comma-separated short days, e.g. Mon,Wed,Fri')
-    string(name: 'WEEK_TIME', defaultValue: '', description: 'Weekly: HH:mm (24h)')
-
-    // ======= your existing params (unchanged) =======
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all flows')
 
     booleanParam(name: 'install_adb',                defaultValue: false, description: '')
@@ -54,155 +33,6 @@ pipeline {
 
   stages {
 
-    /***********************
-     * NEW: Gate to Run Now vs Schedule
-     ***********************/
-    stage('Schedule or Run') {
-      steps {
-        script {
-          if (params.SCHEDULE_MODE == 'Run now') {
-            echo 'Run-now selected — proceeding with pipeline immediately.'
-            return
-          }
-
-          // SCHEDULE_MODE == 'Schedule'
-          if (params.SCHEDULE_TYPE == 'Once') {
-            // Parse ONCE_DATE + ONCE_TIME into a delay (seconds) and re-queue this same job
-            if (!params.ONCE_DATE?.trim() || !params.ONCE_TIME?.trim()) {
-              error "For 'Once' schedule, please fill ONCE_DATE (YYYY-MM-DD) and ONCE_TIME (HH:mm)."
-            }
-
-            def fmt = new java.text.SimpleDateFormat('yyyy-MM-dd HH:mm')
-            // Use controller timezone (Jenkins server time)
-            fmt.setTimeZone(java.util.TimeZone.getDefault())
-            def target = fmt.parse("${params.ONCE_DATE.trim()} ${params.ONCE_TIME.trim()}")
-            def now = new Date()
-            long delaySec = Math.floor((target.time - now.time) / 1000).toLong()
-
-            if (delaySec < 5) {
-              error "The chosen date/time appears to be in the past or too soon. Please pick a future time."
-            }
-            echo "Scheduling a one-shot run in ${delaySec} seconds at ${target} (server time)."
-
-            // Rebuild this same job later with the same parameters:
-            // pull all submitted params from this build and pass through.
-            def pAction = currentBuild.rawBuild.getAction(hudson.model.ParametersAction)
-            def allParams = (pAction?.parameters ?: [])
-            build job: env.JOB_NAME, parameters: allParams, quietPeriod: delaySec, wait: false
-
-            echo 'One-shot schedule created. Stopping this build (nothing else to do now).'
-            // Stop the current build so it doesn’t run immediately.
-            currentBuild.result = 'SUCCESS'
-            // Use error to exit early out of the pipeline without marking it failed.
-            error 'Scheduled only — exiting this run.'
-          }
-
-          if (params.SCHEDULE_TYPE == 'Everyday') {
-            if (!params.EVERY_TIME?.trim()) {
-              error "For 'Everyday' schedule, please fill EVERY_TIME (HH:mm 24h)."
-            }
-            // Convert 'HH:mm' to Jenkins cron (min hour * * *). e.g. 30 21 * * *
-            def (hour, min) = params.EVERY_TIME.trim().tokenize(':')
-            if (!hour || !min) { error "EVERY_TIME must be HH:mm (e.g. 21:30)" }
-            def cron = "${min} ${hour} * * *"
-            echo "Create/update weekly scheduler job for DAILY cron: ${cron}"
-            // Fall through to the DSL stage that creates a helper timer job
-          }
-
-          if (params.SCHEDULE_TYPE == 'Weekly') {
-            if (!params.WEEK_DAYS?.trim() || !params.WEEK_TIME?.trim()) {
-              error "For 'Weekly' schedule, fill WEEK_DAYS (Mon,Wed,...) and WEEK_TIME (HH:mm)."
-            }
-            // Convert day names to Jenkins cron day numbers (1-7, where 1=SUN)
-            // Jenkins accepts SUN,MON,... too. We'll use SUN..SAT words for clarity.
-            def dayMap = ['SUN','MON','TUE','WED','THU','FRI','SAT']
-            def selected = params.WEEK_DAYS.split(/\s*,\s*/).collect { it[0..2].toUpperCase() }
-            def bad = selected.find { !(it in dayMap) && !(it in ['MON','TUE','WED','THU','FRI','SAT','SUN']) }
-            if (bad) { error "Unknown day: ${bad}. Use Mon,Tue,Wed,Thu,Fri,Sat,Sun" }
-            def dayList = selected.join(',')
-            def (hour, min) = params.WEEK_TIME.trim().tokenize(':')
-            if (!hour || !min) { error "WEEK_TIME must be HH:mm (e.g. 09:45)" }
-            def cron = "${min} ${hour} * * ${dayList}"
-            echo "Create/update weekly scheduler job for WEEKLY cron: ${cron}"
-            // Fall through to the DSL stage that creates a helper timer job
-          }
-        }
-      }
-    }
-
-    /***********************
-     * NEW: Only runs when SCHEDULE_MODE=Schedule and SCHEDULE_TYPE in (Everyday|Weekly)
-     * We create/update a *companion* timer job that triggers THIS job with the same params.
-     * Requires the "Job DSL" plugin (Manage Jenkins → Plugins).
-     ***********************/
-    stage('Create/Update scheduler job (recurring)') {
-      when {
-        expression { params.SCHEDULE_MODE == 'Schedule' && (params.SCHEDULE_TYPE == 'Everyday' || params.SCHEDULE_TYPE == 'Weekly') }
-      }
-      steps {
-        script {
-          // Compute CRON string from params
-          String cronExpr
-          if (params.SCHEDULE_TYPE == 'Everyday') {
-            def (hour, min) = params.EVERY_TIME.trim().tokenize(':')
-            cronExpr = "${min} ${hour} * * *"
-          } else {
-            def selected = params.WEEK_DAYS.split(/\s*,\s*/).collect { it[0..2].toUpperCase() }
-            def (hour, min) = params.WEEK_TIME.trim().tokenize(':')
-            cronExpr = "${min} ${hour} * * ${selected.join(',')}"
-          }
-
-          // A helper job name
-          def timerJob = "${env.JOB_NAME}-scheduler"
-
-          // Build a Job DSL that:
-          //  - creates/updates a Pipeline job named "<this>-scheduler"
-          //  - sets a cron trigger
-          //  - its pipeline script just calls this job (env.JOB_NAME) with the latest saved params
-          def dsl = """
-pipelineJob('${timerJob}') {
-  description('Auto-generated scheduler for ${env.JOB_NAME}. Do not edit by hand.')
-  triggers {
-    cron('${cronExpr}')
-  }
-  definition {
-    cps {
-      script(\"\"\"\
-pipeline {
-  agent any
-  stages {
-    stage('Trigger main job') {
-      steps {
-        script {
-          // NOTE: If you want to lock which parameters are forwarded, list them explicitly.
-          // Here we just call the main job with the last saved defaults of the main job.
-          build job: '${env.JOB_NAME}', wait: false, propagate: false
-        }
-      }
-    }
-  }
-}
-\"\"\")
-      sandbox(true)
-    }
-  }
-}
-"""
-          writeFile file: 'scheduler.groovy', text: dsl
-          jobDsl targets: 'scheduler.groovy', removedJobAction: 'IGNORE', removedViewAction: 'IGNORE', lookupStrategy: 'JENKINS_ROOT'
-
-          echo "Created/updated scheduler job '${timerJob}' with cron '${cronExpr}'."
-          echo "This build will end now; the recurring scheduler will run the main job on its schedule."
-
-          currentBuild.result = 'SUCCESS'
-          error 'Scheduler created — exiting this run.'
-        }
-      }
-    }
-
-    /***********************
-     * From here on — your original pipeline (UNCHANGED)
-     ***********************/
     stage('Checkout') {
       steps { checkout scm }
     }
@@ -423,6 +253,7 @@ ${params.RUN_ALL ? 'All test cases executed (RUN_ALL selected)' :
           .findAll { it != null }
           .join('\n'))}
   </pre>
+
 
     ${perSuiteHtml}
 
