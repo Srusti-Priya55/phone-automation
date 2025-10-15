@@ -2,6 +2,16 @@ pipeline {
   agent any
 
   parameters {
+    // === Scheduling parameters ===
+    choice(name: 'RUN_MODE', choices: ['Run now', 'Schedule'], description: 'Select whether to run immediately or schedule the job')
+    choice(name: 'SCHEDULE_TYPE', choices: ['Once', 'Everyday', 'Weekly'], description: 'If Schedule selected, choose the type of scheduling')
+    string(name: 'ONCE_DATE', defaultValue: '', description: 'Once: date (YYYY-MM-DD)')
+    string(name: 'ONCE_TIME', defaultValue: '', description: 'Once: time (HH:mm 24h)')
+    string(name: 'EVERY_TIME', defaultValue: '', description: 'Everyday: time (HH:mm 24h)')
+    string(name: 'WEEK_DAYS', defaultValue: '', description: 'Weekly: comma-separated days (e.g. Mon,Wed,Fri)')
+    string(name: 'WEEK_TIME', defaultValue: '', description: 'Weekly: time (HH:mm 24h)')
+
+    // === Existing parameters ===
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all flows')
 
     booleanParam(name: 'install_adb',                defaultValue: false, description: '')
@@ -33,6 +43,47 @@ pipeline {
 
   stages {
 
+    // ========== NEW STAGE for scheduling ==========
+    stage('Schedule or Run') {
+      steps {
+        script {
+          if (params.RUN_MODE == 'Run now') {
+            echo "Run-now selected — starting immediately."
+          } else if (params.RUN_MODE == 'Schedule') {
+            switch (params.SCHEDULE_TYPE) {
+              case 'Once':
+                if (!params.ONCE_DATE?.trim() || !params.ONCE_TIME?.trim()) {
+                  error "Please provide ONCE_DATE and ONCE_TIME for Once schedule."
+                }
+                echo "📅 Scheduled ONCE on ${params.ONCE_DATE} at ${params.ONCE_TIME}"
+                break
+
+              case 'Everyday':
+                if (!params.EVERY_TIME?.trim()) {
+                  error "Please provide EVERY_TIME for Everyday schedule."
+                }
+                echo "📆 Scheduled EVERYDAY at ${params.EVERY_TIME}"
+                break
+
+              case 'Weekly':
+                if (!params.WEEK_DAYS?.trim() || !params.WEEK_TIME?.trim()) {
+                  error "Please provide WEEK_DAYS and WEEK_TIME for Weekly schedule."
+                }
+                echo "🗓️ Scheduled WEEKLY on ${params.WEEK_DAYS} at ${params.WEEK_TIME}"
+                break
+
+              default:
+                echo "Unknown schedule type"
+            }
+            // Stop this run; in next version we’ll auto-trigger scheduling
+            currentBuild.result = 'SUCCESS'
+            error 'Stopping current run (scheduling preview only).'
+          }
+        }
+      }
+    }
+
+    // ========== Original flow continues ==========
     stage('Checkout') {
       steps { checkout scm }
     }
@@ -130,7 +181,6 @@ pipeline {
             results << [name: flow, status: status]
           }
 
-          // Save per-suite results in plain text (sandbox-safe)
           def lines = results.collect { r -> "${r.name}|${r.status}" }.join('\n')
           writeFile file: 'suite_results.txt', text: lines
         }
@@ -195,7 +245,6 @@ pipeline {
           def recipients = (params.EMAILS ?: '').trim()
           if (recipients) {
 
-            // Build a per-suite HTML table
             def perSuiteHtml = ''
             if (fileExists('suite_results.txt')) {
               def lines = readFile('suite_results.txt').trim().split(/\r?\n/)
@@ -229,7 +278,7 @@ pipeline {
 
             emailext(
               to: recipients,
-              subject: "Mobile Sanity  Build #${env.BUILD_NUMBER}  ${status}",
+              subject: "Mobile Sanity Build #${env.BUILD_NUMBER} ${status}",
               mimeType: 'text/html',
               body: """<html>
   <body style="font-family:Segoe UI, Arial, sans-serif; font-size:14px; color:#111827;">
@@ -253,7 +302,6 @@ ${params.RUN_ALL ? 'All test cases executed (RUN_ALL selected)' :
           .findAll { it != null }
           .join('\n'))}
   </pre>
-
 
     ${perSuiteHtml}
 
