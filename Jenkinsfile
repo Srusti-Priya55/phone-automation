@@ -2,111 +2,94 @@ pipeline {
   agent any
 
   parameters {
-    // === Scheduling parameters ===
-    choice(name: 'RUN_MODE', choices: ['Run now', 'Schedule'], description: 'Select whether to run immediately or schedule the job')
-    choice(name: 'SCHEDULE_TYPE', choices: ['Once', 'Everyday', 'Weekly'], description: 'If Schedule selected, choose the type of scheduling')
+    choice(name: 'RUN_MODE', choices: ['Run now', 'Schedule'], description: 'Run immediately or schedule')
+    choice(name: 'SCHEDULE_TYPE', choices: ['Once', 'Everyday', 'Weekly'], description: 'If Schedule selected')
     string(name: 'ONCE_DATE', defaultValue: '', description: 'Once: date (YYYY-MM-DD)')
     string(name: 'ONCE_TIME', defaultValue: '', description: 'Once: time (HH:mm 24h)')
     string(name: 'EVERY_TIME', defaultValue: '', description: 'Everyday: time (HH:mm 24h)')
-    string(name: 'WEEK_DAYS', defaultValue: '', description: 'Weekly: comma-separated days (e.g. Mon,Wed,Fri)')
+    string(name: 'WEEK_DAYS', defaultValue: '', description: 'Weekly: Mon,Tue,Wed,Thu,Fri,Sat,Sun')
     string(name: 'WEEK_TIME', defaultValue: '', description: 'Weekly: time (HH:mm 24h)')
-
-    // === Existing parameters ===
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all flows')
 
-    booleanParam(name: 'install_adb',                defaultValue: false, description: '')
-    booleanParam(name: 'install_play',               defaultValue: false, description: '')
-    booleanParam(name: 'aggregation_check',          defaultValue: false, description: '')
-    booleanParam(name: 'tnd_check',                  defaultValue: false, description: '')
-    booleanParam(name: 'collection_mode_all',        defaultValue: false, description: '')
-    booleanParam(name: 'collection_mode_trusted',    defaultValue: false, description: '')
-    booleanParam(name: 'collection_mode_untrusted',  defaultValue: false, description: '')
-    booleanParam(name: 'interface_info',             defaultValue: false, description: '')
-    booleanParam(name: 'ipfix_disable',              defaultValue: false, description: '')
-    booleanParam(name: 'ipfix_zero',                 defaultValue: false, description: '')
-    booleanParam(name: 'parent_process_check',       defaultValue: false, description: '')
+    booleanParam(name: 'install_adb', defaultValue: false, description: '')
+    booleanParam(name: 'install_play', defaultValue: false, description: '')
+    booleanParam(name: 'aggregation_check', defaultValue: false, description: '')
+    booleanParam(name: 'tnd_check', defaultValue: false, description: '')
+    booleanParam(name: 'collection_mode_all', defaultValue: false, description: '')
+    booleanParam(name: 'collection_mode_trusted', defaultValue: false, description: '')
+    booleanParam(name: 'collection_mode_untrusted', defaultValue: false, description: '')
+    booleanParam(name: 'interface_info', defaultValue: false, description: '')
+    booleanParam(name: 'ipfix_disable', defaultValue: false, description: '')
+    booleanParam(name: 'ipfix_zero', defaultValue: false, description: '')
+    booleanParam(name: 'parent_process_check', defaultValue: false, description: '')
     booleanParam(name: 'template_caching_untrusted', defaultValue: false, description: '')
-    booleanParam(name: 'before_after_reboot',        defaultValue: false, description: '')
-    booleanParam(name: 'aup_should_displayed',       defaultValue: false, description: '')
-    booleanParam(name: 'aup_should_not_displayed',   defaultValue: false, description: '')
-    booleanParam(name: 'eula_not_accepted',          defaultValue: false, description: '')
-    booleanParam(name: 'negatives',                  defaultValue: false, description: '')
+    booleanParam(name: 'before_after_reboot', defaultValue: false, description: '')
+    booleanParam(name: 'aup_should_displayed', defaultValue: false, description: '')
+    booleanParam(name: 'aup_should_not_displayed', defaultValue: false, description: '')
+    booleanParam(name: 'eula_not_accepted', defaultValue: false, description: '')
+    booleanParam(name: 'negatives', defaultValue: false, description: '')
     string(name: 'EMAILS', defaultValue: '', description: 'Recipients (comma-separated)')
   }
 
   environment {
     NODE_HOME = "C:\\Program Files\\nodejs"
-    PATH      = "${env.NODE_HOME};${env.PATH}"
+    PATH = "${env.NODE_HOME};${env.PATH}"
   }
 
   options { timestamps() }
 
   stages {
-
-    // ========== NEW STAGE for scheduling ==========
     stage('Schedule or Run') {
       steps {
         script {
-          if (params.RUN_MODE == 'Run now') {
-            echo "✅ Run-now selected — executing immediately."
-          } else if (params.RUN_MODE == 'Schedule') {
-            def job = Jenkins.instance.getItemByFullName(env.JOB_NAME)
-            def trigger = null
-            def cronSpec = ''
-
-            switch (params.SCHEDULE_TYPE) {
-              case 'Once':
-                if (!params.ONCE_DATE?.trim() || !params.ONCE_TIME?.trim()) {
-                  error "Please provide ONCE_DATE and ONCE_TIME for Once schedule."
-                }
-
-                // Convert "YYYY-MM-DD HH:mm" to cron format
-                def dt = "${params.ONCE_DATE} ${params.ONCE_TIME}"
-                def parsed = Date.parse("yyyy-MM-dd HH:mm", dt)
-                def cal = Calendar.getInstance(TimeZone.getTimeZone("IST"))
-                cal.time = parsed
-                cronSpec = "${cal.get(Calendar.MINUTE)} ${cal.get(Calendar.HOUR_OF_DAY)} ${cal.get(Calendar.DAY_OF_MONTH)} ${cal.get(Calendar.MONTH)+1} *"
-                echo "📅 Creating one-time schedule: ${cronSpec}"
-                break
-
-              case 'Everyday':
-                if (!params.EVERY_TIME?.trim()) {
-                  error "Please provide EVERY_TIME for Everyday schedule."
-                }
-                def (hour, minute) = params.EVERY_TIME.split(':')
-                cronSpec = "${minute} ${hour} * * *"
-                echo "📆 Scheduling EVERYDAY at ${params.EVERY_TIME} (cron: ${cronSpec})"
-                break
-
-              case 'Weekly':
-                if (!params.WEEK_DAYS?.trim() || !params.WEEK_TIME?.trim()) {
-                  error "Please provide WEEK_DAYS and WEEK_TIME for Weekly schedule."
-                }
-                def dayMap = ['Mon':'1', 'Tue':'2', 'Wed':'3', 'Thu':'4', 'Fri':'5', 'Sat':'6', 'Sun':'0']
-                def days = params.WEEK_DAYS.split(',').collect { dayMap[it.trim()] }.join(',')
-                def (hourW, minuteW) = params.WEEK_TIME.split(':')
-                cronSpec = "${minuteW} ${hourW} * * ${days}"
-                echo "🗓️ Scheduling WEEKLY on ${params.WEEK_DAYS} at ${params.WEEK_TIME} (cron: ${cronSpec})"
-                break
-
-              default:
-                error "Unknown schedule type"
+          if (params.RUN_MODE == 'Schedule') {
+            def cronExpr = ''
+            if (params.SCHEDULE_TYPE == 'Once') {
+              if (!params.ONCE_DATE || !params.ONCE_TIME) {
+                error "Please provide ONCE_DATE and ONCE_TIME"
+              }
+              def dt = "${params.ONCE_DATE} ${params.ONCE_TIME}"
+              def targetMillis = java.time.ZonedDateTime.parse("${params.ONCE_DATE}T${params.ONCE_TIME}:00+05:30").toInstant().toEpochMilli()
+              def delaySeconds = ((targetMillis - System.currentTimeMillis()) / 1000).intValue()
+              echo "Scheduling one-time run in ${delaySeconds} seconds"
+              if (delaySeconds < 60) delaySeconds = 60
+              def cmd = """curl -X POST "http://localhost:8080/job/${env.JOB_NAME}/buildWithParameters" \
+                --user "srusti:117b7e239d09ff5b11e0fc2dbee0cae33f" \
+                --data-urlencode "delay=${delaySeconds}sec" \
+                --data-urlencode "RUN_ALL=${params.RUN_ALL}" """
+              echo "Triggering REST API schedule..."
+              bat label: 'schedule', script: cmd
+              error "Scheduled successfully for ${params.ONCE_DATE} ${params.ONCE_TIME}"
+            } 
+            else if (params.SCHEDULE_TYPE == 'Everyday') {
+              if (!params.EVERY_TIME) { error "Please provide EVERY_TIME" }
+              def parts = params.EVERY_TIME.split(':')
+              cronExpr = "${parts[1]} ${parts[0]} * * *"
+            } 
+            else if (params.SCHEDULE_TYPE == 'Weekly') {
+              if (!params.WEEK_DAYS || !params.WEEK_TIME) { error "Please provide WEEK_DAYS and WEEK_TIME" }
+              def parts = params.WEEK_TIME.split(':')
+              def days = params.WEEK_DAYS.toLowerCase().replaceAll('mon','1').replaceAll('tue','2')
+                .replaceAll('wed','3').replaceAll('thu','4').replaceAll('fri','5')
+                .replaceAll('sat','6').replaceAll('sun','0')
+              cronExpr = "${parts[1]} ${parts[0]} * * ${days}"
             }
 
-            // Apply trigger
-            trigger = new hudson.triggers.TimerTrigger(cronSpec)
-            job.addTrigger(trigger)
-            job.save()
-            echo "✅ Job '${env.JOB_NAME}' scheduled successfully with CRON: ${cronSpec}"
-
-            // Stop current run — will auto-trigger later
-            currentBuild.result = 'SUCCESS'
-            error "⏸ Build scheduled. Will auto-run at specified time."
+            if (cronExpr) {
+              echo "Cron Expression: ${cronExpr}"
+              writeFile file: 'cron.txt', text: cronExpr
+              def cmd = """curl -X POST "http://localhost:8080/job/${env.JOB_NAME}/configure" \
+                --user "admin:admin" \
+                --data-urlencode "spec=${cronExpr}" """
+              bat label: 'schedule', script: cmd
+              error "✅ Job scheduled successfully."
+            }
+          } else {
+            echo "Run now selected — running immediately."
           }
         }
       }
     }
-
 
     // ========== Original flow continues ==========
     stage('Checkout') {
