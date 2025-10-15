@@ -48,40 +48,65 @@ pipeline {
       steps {
         script {
           if (params.RUN_MODE == 'Run now') {
-            echo "Run-now selected — starting immediately."
+            echo "✅ Run-now selected — executing immediately."
           } else if (params.RUN_MODE == 'Schedule') {
+            def job = Jenkins.instance.getItemByFullName(env.JOB_NAME)
+            def trigger = null
+            def cronSpec = ''
+
             switch (params.SCHEDULE_TYPE) {
               case 'Once':
                 if (!params.ONCE_DATE?.trim() || !params.ONCE_TIME?.trim()) {
                   error "Please provide ONCE_DATE and ONCE_TIME for Once schedule."
                 }
-                echo "📅 Scheduled ONCE on ${params.ONCE_DATE} at ${params.ONCE_TIME}"
+
+                // Convert "YYYY-MM-DD HH:mm" to cron format
+                def dt = "${params.ONCE_DATE} ${params.ONCE_TIME}"
+                def parsed = Date.parse("yyyy-MM-dd HH:mm", dt)
+                def cal = Calendar.getInstance(TimeZone.getTimeZone("IST"))
+                cal.time = parsed
+                cronSpec = "${cal.get(Calendar.MINUTE)} ${cal.get(Calendar.HOUR_OF_DAY)} ${cal.get(Calendar.DAY_OF_MONTH)} ${cal.get(Calendar.MONTH)+1} *"
+                echo "📅 Creating one-time schedule: ${cronSpec}"
                 break
 
               case 'Everyday':
                 if (!params.EVERY_TIME?.trim()) {
                   error "Please provide EVERY_TIME for Everyday schedule."
                 }
-                echo "📆 Scheduled EVERYDAY at ${params.EVERY_TIME}"
+                def (hour, minute) = params.EVERY_TIME.split(':')
+                cronSpec = "${minute} ${hour} * * *"
+                echo "📆 Scheduling EVERYDAY at ${params.EVERY_TIME} (cron: ${cronSpec})"
                 break
 
               case 'Weekly':
                 if (!params.WEEK_DAYS?.trim() || !params.WEEK_TIME?.trim()) {
                   error "Please provide WEEK_DAYS and WEEK_TIME for Weekly schedule."
                 }
-                echo "🗓️ Scheduled WEEKLY on ${params.WEEK_DAYS} at ${params.WEEK_TIME}"
+                def dayMap = ['Mon':'1', 'Tue':'2', 'Wed':'3', 'Thu':'4', 'Fri':'5', 'Sat':'6', 'Sun':'0']
+                def days = params.WEEK_DAYS.split(',').collect { dayMap[it.trim()] }.join(',')
+                def (hourW, minuteW) = params.WEEK_TIME.split(':')
+                cronSpec = "${minuteW} ${hourW} * * ${days}"
+                echo "🗓️ Scheduling WEEKLY on ${params.WEEK_DAYS} at ${params.WEEK_TIME} (cron: ${cronSpec})"
                 break
 
               default:
-                echo "Unknown schedule type"
+                error "Unknown schedule type"
             }
-            // Stop this run; in next version we’ll auto-trigger scheduling
+
+            // Apply trigger
+            trigger = new hudson.triggers.TimerTrigger(cronSpec)
+            job.addTrigger(trigger)
+            job.save()
+            echo "✅ Job '${env.JOB_NAME}' scheduled successfully with CRON: ${cronSpec}"
+
+            // Stop current run — will auto-trigger later
             currentBuild.result = 'SUCCESS'
-            error 'Stopping current run (scheduling preview only).'
+            error "⏸ Build scheduled. Will auto-run at specified time."
           }
         }
       }
     }
+
 
     // ========== Original flow continues ==========
     stage('Checkout') {
