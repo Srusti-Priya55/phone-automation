@@ -5,13 +5,12 @@ def addCronTrigger(jobName, cronExpr) {
         println "❌ Job not found: ${jobName}"
         return
     }
-    // Clear old triggers
     job.triggers.clear()
     def trigger = new hudson.triggers.TimerTrigger(cronExpr)
     trigger.start(job, true)
     job.addTrigger(trigger)
     job.save()
-    println "✅ Cron trigger added for ${jobName}: ${cronExpr}"
+    println "✅ Cron trigger added: ${cronExpr}"
 }
 
 pipeline {
@@ -19,14 +18,14 @@ pipeline {
 
   parameters {
     choice(name: 'RUN_MODE', choices: ['Run now', 'Schedule'], description: 'Run immediately or schedule')
-    choice(name: 'SCHEDULE_TYPE', choices: ['Once', 'Everyday', 'Weekly'], description: 'If Schedule selected')
+    choice(name: 'SCHEDULE_TYPE', choices: ['Once', 'Everyday', 'Weekly'], description: 'Schedule type (if Schedule selected)')
     string(name: 'ONCE_DATE', defaultValue: '', description: 'Once: date (YYYY-MM-DD)')
-    string(name: 'ONCE_TIME', defaultValue: '', description: 'Once: time (HH:mm 24h)')
-    string(name: 'EVERY_TIME', defaultValue: '', description: 'Everyday: time (HH:mm 24h)')
-    string(name: 'WEEK_DAYS', defaultValue: '', description: 'Weekly: Mon,Tue,Wed,Thu,Fri,Sat,Sun')
-    string(name: 'WEEK_TIME', defaultValue: '', description: 'Weekly: time (HH:mm 24h)')
-
+    string(name: 'ONCE_TIME', defaultValue: '', description: 'Once: time (HH:mm)')
+    string(name: 'EVERY_TIME', defaultValue: '', description: 'Everyday: time (HH:mm)')
+    string(name: 'WEEK_DAYS', defaultValue: '', description: 'Weekly: Mon,Tue,Wed')
+    string(name: 'WEEK_TIME', defaultValue: '', description: 'Weekly: time (HH:mm)')
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all flows')
+
     booleanParam(name: 'install_adb', defaultValue: false, description: '')
     booleanParam(name: 'install_play', defaultValue: false, description: '')
     booleanParam(name: 'aggregation_check', defaultValue: false, description: '')
@@ -61,49 +60,41 @@ pipeline {
         script {
           if (params.RUN_MODE == 'Schedule') {
 
-            // ========== Once ==========
             if (params.SCHEDULE_TYPE == 'Once') {
-              if (!params.ONCE_DATE || !params.ONCE_TIME) error "Please provide ONCE_DATE and ONCE_TIME"
-
               def now = new Date()
               def sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm")
               def target = sdf.parse("${params.ONCE_DATE} ${params.ONCE_TIME}")
               def delay = ((target.time - now.time) / 1000).intValue()
               if (delay < 60) delay = 60
-
               echo "Scheduling one-time run in ${delay} seconds..."
               bat """
                 curl -X POST "http://localhost:8080/job/${env.JOB_NAME}/buildWithParameters" ^
                 --user "srusti:117b7e239d09ff5b11e0fc2dbee0cae33f" ^
                 --data-urlencode "RUN_MODE=Run now" ^
+                --data-urlencode "RUN_ALL=true" ^
                 --data-urlencode "delay=${delay}sec"
               """
-              echo "✅ Job scheduled successfully for ${params.ONCE_DATE} ${params.ONCE_TIME}"
               currentBuild.result = 'SUCCESS'
               return
             }
 
-            // ========== Everyday ==========
-            else if (params.SCHEDULE_TYPE == 'Everyday') {
-              if (!params.EVERY_TIME) error "Please provide EVERY_TIME"
+            if (params.SCHEDULE_TYPE == 'Everyday') {
               def parts = params.EVERY_TIME.split(':')
               def cronExpr = "${parts[1]} ${parts[0]} * * *"
-              echo "Setting up Daily trigger: ${cronExpr}"
+              echo "Setting Daily trigger: ${cronExpr}"
               addCronTrigger(env.JOB_NAME, cronExpr)
               currentBuild.result = 'SUCCESS'
               return
             }
 
-            // ========== Weekly ==========
-            else if (params.SCHEDULE_TYPE == 'Weekly') {
-              if (!params.WEEK_DAYS || !params.WEEK_TIME) error "Please provide WEEK_DAYS and WEEK_TIME"
+            if (params.SCHEDULE_TYPE == 'Weekly') {
               def parts = params.WEEK_TIME.split(':')
               def days = params.WEEK_DAYS.toLowerCase()
                 .replaceAll('mon','1').replaceAll('tue','2').replaceAll('wed','3')
-                .replaceAll('thu','4').replaceAll('fri','5').replaceAll('sat','6')
-                .replaceAll('sun','0')
+                .replaceAll('thu','4').replaceAll('fri','5')
+                .replaceAll('sat','6').replaceAll('sun','0')
               def cronExpr = "${parts[1]} ${parts[0]} * * ${days}"
-              echo "Setting up Weekly trigger: ${cronExpr}"
+              echo "Setting Weekly trigger: ${cronExpr}"
               addCronTrigger(env.JOB_NAME, cronExpr)
               currentBuild.result = 'SUCCESS'
               return
@@ -115,15 +106,9 @@ pipeline {
       }
     }
 
-    // ===== Rest of your stages (same as before) =====
-
-    stage('Checkout') {
-      when { expression { params.RUN_MODE == 'Run now' } }
-      steps { checkout scm }
-    }
+    stage('Checkout') { steps { checkout scm } }
 
     stage('Agent sanity') {
-      when { expression { params.RUN_MODE == 'Run now' } }
       steps {
         bat '''
           echo ===== Agent sanity =====
@@ -136,7 +121,6 @@ pipeline {
     }
 
     stage('Clean outputs') {
-      when { expression { params.RUN_MODE == 'Run now' } }
       steps {
         bat '''
           if exist allure-results rmdir /s /q allure-results
@@ -147,7 +131,6 @@ pipeline {
     }
 
     stage('Install deps') {
-      when { expression { params.RUN_MODE == 'Run now' } }
       steps {
         bat '''
           call node -v
@@ -158,40 +141,26 @@ pipeline {
       }
     }
 
-stage('Select flows') {
-  when { expression { params.RUN_MODE == 'Run now' } }
-  steps {
-    script {
-      def all = [
-        'install_adb','install_play','aggregation_check','tnd_check',
-        'collection_mode_all','collection_mode_trusted','collection_mode_untrusted',
-        'interface_info','ipfix_disable','ipfix_zero','parent_process_check',
-        'template_caching_untrusted','before_after_reboot',
-        'aup_should_displayed','aup_should_not_displayed','eula_not_accepted','negatives'
-      ]
-      
-      // 🧠 Jenkins sometimes returns null for unchecked booleans — handle that safely
-      def selected = all.findAll { params[it]?.toString() == 'true' }
-
-      // 🧩 Allow RUN_ALL to override, or selected to be non-empty
-      if (params.RUN_ALL) {
-        env.CHOSEN = all.join(',')
-        echo "All flows enabled via RUN_ALL"
-      } else if (selected) {
-        env.CHOSEN = selected.join(',')
-        echo "Flows selected: ${env.CHOSEN}"
-      } else {
-        echo "⚠️ No checkbox selected — skipping execution (auto-triggered build?)"
-        currentBuild.result = 'SUCCESS'
-        return
+    stage('Select flows') {
+      steps {
+        script {
+          def all = [
+            'install_adb','install_play','aggregation_check','tnd_check',
+            'collection_mode_all','collection_mode_trusted','collection_mode_untrusted',
+            'interface_info','ipfix_disable','ipfix_zero','parent_process_check',
+            'template_caching_untrusted','before_after_reboot',
+            'aup_should_displayed','aup_should_not_displayed','eula_not_accepted','negatives'
+          ]
+          def selected = all.findAll { params[it]?.toString() == 'true' }
+          if (params.RUN_ALL) { env.CHOSEN = all.join(',') }
+          else if (selected) { env.CHOSEN = selected.join(',') }
+          else { error 'No flows selected — pick at least one or enable RUN_ALL' }
+          echo "Flows selected: ${env.CHOSEN}"
+        }
       }
     }
-  }
-}
-
 
     stage('Run flows (sequential)') {
-      when { expression { params.RUN_MODE == 'Run now' } }
       steps {
         script {
           def FLOW = [
@@ -203,23 +172,16 @@ stage('Select flows') {
             def flow = FLOW.get(suite, suite)
             echo "=== RUNNING ${suite} ==="
             int code = bat(returnStatus: true, script: "npx wdio run wdio.conf.ts --suite ${suite}")
-            def status = (code == 0) ? 'SUCCESS' : 'FAILURE'
-            results << [name: flow, status: status]
-            if (code != 0) error "Suite ${suite} failed"
+            results << [name: flow, status: code == 0 ? 'SUCCESS' : 'FAILURE']
           }
-          def lines = results.collect { r -> "${r.name}|${r.status}" }.join('\n')
-          writeFile file: 'suite_results.txt', text: lines
+          writeFile file: 'suite_results.txt', text: results.collect { "${it.name}|${it.status}" }.join('\n')
         }
       }
     }
 
-    stage('Generate Allure') {
-      when { expression { params.RUN_MODE == 'Run now' } }
-      steps { bat 'npx allure generate --clean allure-results -o allure-report' }
-    }
+    stage('Generate Allure') { steps { bat 'npx allure generate --clean allure-results -o allure-report' } }
 
     stage('Publish Allure') {
-      when { expression { params.RUN_MODE == 'Run now' } }
       steps {
         script {
           if (fileExists('allure-results')) allure(results: [[path: 'allure-results']])
@@ -228,17 +190,26 @@ stage('Select flows') {
     }
 
     stage('Email & Archive') {
-      when { expression { params.RUN_MODE == 'Run now' } }
       steps {
         script {
           archiveArtifacts artifacts: 'allure-report/**, allure-report.single.html, suite_results.txt', fingerprint: true
           def recipients = (params.EMAILS ?: '').trim()
           if (recipients) {
+            def lines = readFile('suite_results.txt').trim().split(/\r?\n/)
+            def rows = lines.collect {
+              def parts = it.split('\\|')
+              def color = (parts[1] == 'SUCCESS') ? '#16a34a' : '#dc2626'
+              "<tr><td>${parts[0]}</td><td style='color:${color}'>${parts[1]}</td></tr>"
+            }.join('\n')
             emailext(
               to: recipients,
               subject: "Mobile Sanity Build #${env.BUILD_NUMBER} ${currentBuild.currentResult}",
               mimeType: 'text/html',
-              body: "Automation completed. Attached: allure-report.single.html",
+              body: """<html><body>
+              <p>Status: <b>${currentBuild.currentResult}</b></p>
+              <table border='1' cellpadding='5'>${rows}</table>
+              <p>Attached: allure-report.single.html</p>
+              </body></html>""",
               attachmentsPattern: 'allure-report.single.html'
             )
           }
