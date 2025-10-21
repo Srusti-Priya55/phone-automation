@@ -11,7 +11,6 @@ pipeline {
     string(name: 'WEEK_TIME', defaultValue: '', description: 'Weekly: time (HH:mm 24h)')
 
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all flows')
-
     booleanParam(name: 'install_adb', defaultValue: false, description: '')
     booleanParam(name: 'install_play', defaultValue: false, description: '')
     booleanParam(name: 'aggregation_check', defaultValue: false, description: '')
@@ -34,7 +33,7 @@ pipeline {
 
   environment {
     NODE_HOME = "C:\\Program Files\\nodejs"
-    PATH      = "${env.NODE_HOME};${env.PATH}"
+    PATH = "${env.NODE_HOME};${env.PATH}"
   }
 
   options { timestamps() }
@@ -49,21 +48,25 @@ pipeline {
             def delaySeconds = 0
             def cronExpr = ''
 
+            // ---------- ONCE SCHEDULE ----------
             if (params.SCHEDULE_TYPE == 'Once') {
               if (!params.ONCE_DATE || !params.ONCE_TIME) {
                 error "Please provide ONCE_DATE and ONCE_TIME"
               }
 
+              // sandbox-safe time parsing
               def now = new Date()
               def dateTimeStr = "${params.ONCE_DATE} ${params.ONCE_TIME}"
-              def targetMillis = Date.parse("yyyy-MM-dd HH:mm", dateTimeStr).getTime()
+              def sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm")
+              def targetMillis = sdf.parse(dateTimeStr).getTime()
               delaySeconds = ((targetMillis - now.time) / 1000).intValue()
               if (delaySeconds < 60) delaySeconds = 60
 
               echo "Scheduling one-time run in ${delaySeconds} seconds"
 
+              // collect parameters
               def paramString = [
-                "RUN_MODE=Run now", // ensure next build runs immediately
+                "RUN_MODE=Run now",
                 "RUN_ALL=${params.RUN_ALL}",
                 "install_adb=${params.install_adb}",
                 "install_play=${params.install_play}",
@@ -85,6 +88,7 @@ pipeline {
                 "EMAILS=${params.EMAILS}"
               ].collect { "--data-urlencode \"${it}\"" }.join(" ^\n")
 
+              // REST call to schedule new run
               bat label: 'Schedule', script: """
                 curl -X POST "http://localhost:8080/job/${env.JOB_NAME}/buildWithParameters" ^
                 --user "srusti:117b7e239d09ff5b11e0fc2dbee0cae33f" ^
@@ -97,12 +101,14 @@ pipeline {
               return
             }
 
+            // ---------- EVERYDAY SCHEDULE ----------
             else if (params.SCHEDULE_TYPE == 'Everyday') {
               if (!params.EVERY_TIME) { error "Please provide EVERY_TIME" }
               def parts = params.EVERY_TIME.split(':')
               cronExpr = "${parts[1]} ${parts[0]} * * *"
             }
 
+            // ---------- WEEKLY SCHEDULE ----------
             else if (params.SCHEDULE_TYPE == 'Weekly') {
               if (!params.WEEK_DAYS || !params.WEEK_TIME) {
                 error "Please provide WEEK_DAYS and WEEK_TIME"
@@ -115,6 +121,7 @@ pipeline {
               cronExpr = "${parts[1]} ${parts[0]} * * ${days}"
             }
 
+            // ---------- CRON SETUP ----------
             if (cronExpr) {
               echo "Cron Expression: ${cronExpr}"
               bat label: 'Schedule', script: """
@@ -126,7 +133,6 @@ pipeline {
               currentBuild.result = 'SUCCESS'
               return
             }
-
           } else {
             echo "Run now selected — running immediately."
           }
@@ -134,7 +140,7 @@ pipeline {
       }
     }
 
-    // ==================== EXISTING STAGES (Run Now only) ====================
+    // ==================== MAIN STAGES (Run Now only) ====================
 
     stage('Checkout') {
       when { expression { params.RUN_MODE == 'Run now' } }
@@ -334,7 +340,7 @@ pipeline {
               """
             }
 
-            def status      = currentBuild.currentResult
+            def status = currentBuild.currentResult
             def statusColor = (status == 'SUCCESS') ? '#16a34a' : '#dc2626'
 
             emailext(
@@ -344,18 +350,14 @@ pipeline {
               body: """<html>
   <body style="font-family:Segoe UI, Arial, sans-serif; font-size:14px; color:#111827;">
     <p>Hi Team,</p>
-
     <p>This is an automated build status update from the Mobile Automation Suite.</p>
-
     <p><strong>Status:</strong>
        <span style="font-weight:700; color:${statusColor};">${status}</span>
     </p>
-
     <p>
       <strong>Executed On:</strong> ${new Date().format("yyyy-MM-dd HH:mm:ss")}<br/>
       <strong>Duration:</strong> ${currentBuild.durationString.replace(' and counting', '')}
     </p>
-
     <p><strong>Executed Test Cases:</strong></p>
   <pre style="background:#f8fafc;border:1px solid #e5e7eb;padding:8px;border-radius:6px;white-space:pre-wrap;margin:0;">
 ${params.RUN_ALL ? 'All test cases executed (RUN_ALL selected)' :
@@ -363,9 +365,7 @@ ${params.RUN_ALL ? 'All test cases executed (RUN_ALL selected)' :
           .findAll { it != null }
           .join('\n'))}
   </pre>
-
     ${perSuiteHtml}
-
     <p style="margin-top:12px;">Attached: <em>allure-report.single.html</em>.</p>
   </body>
 </html>""",
