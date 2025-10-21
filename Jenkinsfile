@@ -1,18 +1,18 @@
 pipeline {
   agent any
 
+  /********** PARAMETERS **********/
   parameters {
-    // --- Schedule UI ---
-    choice(name: 'RUN_MODE',      choices: ['Run now', 'Schedule'], description: 'Run immediately or schedule')
+    choice(name: 'RUN_MODE', choices: ['Run now', 'Schedule'], description: 'Run immediately or schedule')
     choice(name: 'SCHEDULE_TYPE', choices: ['Once', 'Everyday', 'Weekly'], description: 'If Schedule selected')
-    string(name: 'ONCE_DATE',  defaultValue: '', description: 'Once: date (YYYY-MM-DD)')
-    string(name: 'ONCE_TIME',  defaultValue: '', description: 'Once: time (HH:mm 24h)')
+    string(name: 'ONCE_DATE', defaultValue: '', description: 'Once: date (YYYY-MM-DD)')
+    string(name: 'ONCE_TIME', defaultValue: '', description: 'Once: time (HH:mm 24h)')
     string(name: 'EVERY_TIME', defaultValue: '', description: 'Everyday: time (HH:mm 24h)')
-    string(name: 'WEEK_DAYS',  defaultValue: '', description: 'Weekly: comma days (Mon,Tue,Wed,Thu,Fri,Sat,Sun)')
+    string(name: 'WEEK_DAYS',  defaultValue: '', description: 'Weekly: e.g. Mon,Tue,Wed or MON-FRI')
     string(name: 'WEEK_TIME',  defaultValue: '', description: 'Weekly: time (HH:mm 24h)')
 
-    // --- Your existing params (unchanged) ---
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all flows')
+
     booleanParam(name: 'install_adb',                defaultValue: false, description: '')
     booleanParam(name: 'install_play',               defaultValue: false, description: '')
     booleanParam(name: 'aggregation_check',          defaultValue: false, description: '')
@@ -42,168 +42,137 @@ pipeline {
 
   stages {
 
-    // ========== SCHEDULER GATE ==========
+    /********** DISPATCHER: schedule or run **********/
     stage('Schedule or Run') {
       steps {
         script {
-          if (params.RUN_MODE == 'Schedule') {
-
-            // ---- helpers ----
-            def curlScheduleOnce = { delaySeconds ->
-              // Carry **all** params into the future run so checkboxes & EMAILS persist
-              def kv = [
-                "RUN_MODE=Run now",
-                "RUN_ALL=${params.RUN_ALL}",
-                "install_adb=${params.install_adb}",
-                "install_play=${params.install_play}",
-                "aggregation_check=${params.aggregation_check}",
-                "tnd_check=${params.tnd_check}",
-                "collection_mode_all=${params.collection_mode_all}",
-                "collection_mode_trusted=${params.collection_mode_trusted}",
-                "collection_mode_untrusted=${params.collection_mode_untrusted}",
-                "interface_info=${params.interface_info}",
-                "ipfix_disable=${params.ipfix_disable}",
-                "ipfix_zero=${params.ipfix_zero}",
-                "parent_process_check=${params.parent_process_check}",
-                "template_caching_untrusted=${params.template_caching_untrusted}",
-                "before_after_reboot=${params.before_after_reboot}",
-                "aup_should_displayed=${params.aup_should_displayed}",
-                "aup_should_not_displayed=${params.aup_should_not_displayed}",
-                "eula_not_accepted=${params.eula_not_accepted}",
-                "negatives=${params.negatives}",
-                "EMAILS=${params.EMAILS}"
-              ].collect { '--data-urlencode "' + it + '"' }.join(" ^\n")
-
-              bat """
-                curl -X POST "http://localhost:8080/job/${env.JOB_NAME}/buildWithParameters" ^
-                --user "srusti:117b7e239d09ff5b11e0fc2dbee0cae33f" ^
-                ${kv} ^
-                --data-urlencode "delay=${delaySeconds}sec"
-              """
-            }
-
-            def setCronWithDefaults = { cronExpr ->
-              // Update job defaults to match CURRENT selections,
-              // so future cron builds use the same checkboxes + emails.
-              properties([
-                parameters([
-                  booleanParam(name: 'RUN_ALL', defaultValue: params.RUN_ALL, description: 'Run all flows'),
-                  booleanParam(name: 'install_adb',                defaultValue: params.install_adb, description: ''),
-                  booleanParam(name: 'install_play',               defaultValue: params.install_play, description: ''),
-                  booleanParam(name: 'aggregation_check',          defaultValue: params.aggregation_check, description: ''),
-                  booleanParam(name: 'tnd_check',                  defaultValue: params.tnd_check, description: ''),
-                  booleanParam(name: 'collection_mode_all',        defaultValue: params.collection_mode_all, description: ''),
-                  booleanParam(name: 'collection_mode_trusted',    defaultValue: params.collection_mode_trusted, description: ''),
-                  booleanParam(name: 'collection_mode_untrusted',  defaultValue: params.collection_mode_untrusted, description: ''),
-                  booleanParam(name: 'interface_info',             defaultValue: params.interface_info, description: ''),
-                  booleanParam(name: 'ipfix_disable',              defaultValue: params.ipfix_disable, description: ''),
-                  booleanParam(name: 'ipfix_zero',                 defaultValue: params.ipfix_zero, description: ''),
-                  booleanParam(name: 'parent_process_check',       defaultValue: params.parent_process_check, description: ''),
-                  booleanParam(name: 'template_caching_untrusted', defaultValue: params.template_caching_untrusted, description: ''),
-                  booleanParam(name: 'before_after_reboot',        defaultValue: params.before_after_reboot, description: ''),
-                  booleanParam(name: 'aup_should_displayed',       defaultValue: params.aup_should_displayed, description: ''),
-                  booleanParam(name: 'aup_should_not_displayed',   defaultValue: params.aup_should_not_displayed, description: ''),
-                  booleanParam(name: 'eula_not_accepted',          defaultValue: params.eula_not_accepted, description: ''),
-                  booleanParam(name: 'negatives',                  defaultValue: params.negatives, description: ''),
-                  string(name: 'EMAILS', defaultValue: params.EMAILS ?: '', description: 'Recipients (comma-separated)')
-                ]),
-                pipelineTriggers([cron(cronExpr)])
-              ])
-            }
-
-            // ---- routing ----
-            if (params.SCHEDULE_TYPE == 'Once') {
-                if (!params.ONCE_DATE?.trim() || !params.ONCE_TIME?.trim()) {
-                    error "Please provide ONCE_DATE and ONCE_TIME"
-                }
-
-                def sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm")
-                def target = sdf.parse("${params.ONCE_DATE.trim()} ${params.ONCE_TIME.trim()}")
-                def now = new Date()
-                int delay = Math.max(60, ((target.time - now.time) / 1000).intValue())
-
-                echo "Scheduling one-time run in ${delay} seconds..."
-
-                // Ask Jenkins itself to queue the build
-                def qid = Jenkins.instance.queue.schedule(
-                    Jenkins.instance.getItemByFullName(env.JOB_NAME),
-                    delay * 1000,
-                    new hudson.model.Cause.UserIdCause(),
-                    new hudson.model.ParametersAction(currentBuild.rawBuild.getAction(hudson.model.ParametersAction))
-                )
-
-                if (qid == null) {
-                    error "Failed to schedule delayed build."
-                }
-
-                echo "✅ One-time build queued for ${params.ONCE_DATE} ${params.ONCE_TIME}"
-                currentBuild.description = "Scheduled once for ${params.ONCE_DATE} ${params.ONCE_TIME}"
-                currentBuild.result = 'SUCCESS'
-
-                // ⛔ stop right here — do NOT continue the current pipeline
-                return
-            }
-
-
-            if (params.SCHEDULE_TYPE == 'Everyday') {
-              if (!params.EVERY_TIME?.trim()) { error "Please provide EVERY_TIME (HH:mm)" }
-              def parts = params.EVERY_TIME.trim().split(':')
-              if (parts.size() != 2) { error "EVERY_TIME must be HH:mm" }
-              def hh = parts[0]; def mm = parts[1]
-              def cronExpr = "${mm} ${hh} * * *"
-              echo "Setting daily cron: ${cronExpr}"
-              setCronWithDefaults(cronExpr)
-              echo "✅ Daily schedule saved. This run will NOT execute now."
-              currentBuild.description = "Daily @ ${params.EVERY_TIME}"
-              currentBuild.result = 'SUCCESS'
-              return // ← do NOT run now
-            }
-
-            if (params.SCHEDULE_TYPE == 'Weekly') {
-              if (!params.WEEK_DAYS?.trim() || !params.WEEK_TIME?.trim()) {
-                error "Please provide WEEK_DAYS and WEEK_TIME"
-              }
-              def toDow = { s ->
-                switch (s.toLowerCase()) {
-                  case ['mon','monday']  : return 'MON'
-                  case ['tue','tues','tuesday'] : return 'TUE'
-                  case ['wed','weds','wednesday']: return 'WED'
-                  case ['thu','thur','thurs','thursday']: return 'THU'
-                  case ['fri','friday']  : return 'FRI'
-                  case ['sat','saturday']: return 'SAT'
-                  case ['sun','sunday']  : return 'SUN'
-                  default: return null
-                }
-              }
-              def daysList = params.WEEK_DAYS.split(/\s*,\s*/).collect { toDow(it) }.findAll { it != null }
-              if (daysList.isEmpty()) { error "WEEK_DAYS must be like Mon,Wed,Fri" }
-
-              def parts = params.WEEK_TIME.trim().split(':')
-              if (parts.size() != 2) { error "WEEK_TIME must be HH:mm" }
-              def hh = parts[0]; def mm = parts[1]
-
-              def cronExpr = "${mm} ${hh} * * ${daysList.join(',')}"
-              echo "Setting weekly cron: ${cronExpr}"
-              setCronWithDefaults(cronExpr)
-              echo "✅ Weekly schedule saved. This run will NOT execute now."
-              currentBuild.description = "Weekly ${daysList.join(',')} @ ${params.WEEK_TIME}"
-              currentBuild.result = 'SUCCESS'
-              return // ← do NOT run now
-            }
-
-            error "Unknown SCHEDULE_TYPE: ${params.SCHEDULE_TYPE}"
-          } else {
+          def runMode = (params.RUN_MODE ?: 'Run now').trim()
+          if (runMode != 'Schedule') {
             echo "Run now selected — executing immediately."
+            return
           }
+
+          // --- We are in "Schedule" path. ---
+          def typ = (params.SCHEDULE_TYPE ?: '').trim()
+          if (!typ) { error "Please choose SCHEDULE_TYPE (Once / Everyday / Weekly)" }
+
+          // Helper to copy the current parameters & override one value
+          def copyParamsWith = { Map<String, String> overrides ->
+            def current = currentBuild.rawBuild.getAction(hudson.model.ParametersAction)
+            def all = []
+            if (current) { all.addAll(current.parameters) }
+            overrides.each { k, v ->
+              all.removeAll { it.name == k }
+              all.add(new hudson.model.StringParameterValue(k, String.valueOf(v)))
+            }
+            new hudson.model.ParametersAction(all)
+          }
+
+          if (typ == 'Once') {
+            if (!params.ONCE_DATE?.trim() || !params.ONCE_TIME?.trim()) {
+              error "Please provide ONCE_DATE and ONCE_TIME"
+            }
+            // Parse "yyyy-MM-dd HH:mm" safely
+            def sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm")
+            sdf.setLenient(false)
+            def target = sdf.parse("${params.ONCE_DATE.trim()} ${params.ONCE_TIME.trim()}")
+            def now = new Date()
+            int delay = Math.max(60, ((target.time - now.time) / 1000).intValue())
+
+            echo "Scheduling one-time run in ${delay} seconds..."
+
+            // Enqueue a new build of THIS job with same params but RUN_MODE=Run now
+            def j = jenkins.model.Jenkins.getInstance().getItemByFullName(env.JOB_NAME)
+            def qid = jenkins.model.Jenkins.getInstance().queue.schedule(
+              j,
+              delay * 1000L,
+              new hudson.model.Cause.UserIdCause(),
+              copyParamsWith([RUN_MODE: 'Run now'])
+            )
+            if (qid == null) {
+              error "Failed to schedule delayed build."
+            }
+
+            currentBuild.description = "Scheduled once for ${params.ONCE_DATE} ${params.ONCE_TIME}"
+            echo "✅ Queued one-time build for ${params.ONCE_DATE} ${params.ONCE_TIME}"
+
+            // hard-stop current build so nothing else runs now
+            currentBuild.result = 'SUCCESS'
+            error('Scheduled (once). Exiting current build.')
+          }
+
+          // Build a Jenkins cron expression (use names MON,TUE,... to avoid number mistakes)
+          def toCron = { hhmm ->
+            def p = hhmm.split(':')
+            if (p.size() != 2) { error "Bad time '${hhmm}', expected HH:mm" }
+            int hh = p[0].toInteger(); int mm = p[1].toInteger()
+            if (hh < 0 || hh > 23 || mm < 0 || mm > 59) { error "Time out of range: ${hhmm}" }
+            return String.format("%02d %02d", mm, hh) // "mm HH"
+          }
+
+          if (typ == 'Everyday') {
+            if (!params.EVERY_TIME?.trim()) { error "Please provide EVERY_TIME" }
+            def mmHH = toCron(params.EVERY_TIME.trim())
+            def cronExpr = "${mmHH} * * *"
+            echo "Setting daily cron: '${cronExpr}'"
+            properties([pipelineTriggers([cron(cronExpr)])])
+            currentBuild.description = "Daily @ ${params.EVERY_TIME.trim()}"
+            echo "✅ Daily schedule saved. No run now."
+
+            currentBuild.result = 'SUCCESS'
+            error('Scheduled (daily). Exiting current build.')
+          }
+
+          if (typ == 'Weekly') {
+            if (!params.WEEK_DAYS?.trim() || !params.WEEK_TIME?.trim()) {
+              error "Please provide WEEK_DAYS and WEEK_TIME"
+            }
+            def mmHH = toCron(params.WEEK_TIME.trim())
+
+            // Normalize days -> MON,TUE,... or a range like MON-FRI
+            def rawDays = params.WEEK_DAYS.trim()
+            def normalized
+            if (rawDays.contains('-')) {
+              // e.g. Mon-Fri
+              def map = ['mon':'MON','tue':'TUE','wed':'WED','thu':'THU','fri':'FRI','sat':'SAT','sun':'SUN']
+              def parts = rawDays.split('-',2)
+              if (parts.size()!=2) { error "Bad WEEK_DAYS range '${rawDays}'" }
+              normalized = "${map[parts[0].toLowerCase()]}-${map[parts[1].toLowerCase()]}"
+            } else {
+              normalized = rawDays
+                .replaceAll('(?i)Monday','MON').replaceAll('(?i)Mon','MON')
+                .replaceAll('(?i)Tuesday','TUE').replaceAll('(?i)Tue','TUE')
+                .replaceAll('(?i)Wednesday','WED').replaceAll('(?i)Wed','WED')
+                .replaceAll('(?i)Thursday','THU').replaceAll('(?i)Thu','THU')
+                .replaceAll('(?i)Friday','FRI').replaceAll('(?i)Fri','FRI')
+                .replaceAll('(?i)Saturday','SAT').replaceAll('(?i)Sat','SAT')
+                .replaceAll('(?i)Sunday','SUN').replaceAll('(?i)Sun','SUN')
+                .toUpperCase()
+            }
+
+            def cronExpr = "${mmHH} * * ${normalized}"
+            echo "Setting weekly cron: '${cronExpr}'"
+            properties([pipelineTriggers([cron(cronExpr)])])
+            currentBuild.description = "Weekly ${normalized} @ ${params.WEEK_TIME.trim()}"
+            echo "✅ Weekly schedule saved. No run now."
+
+            currentBuild.result = 'SUCCESS'
+            error('Scheduled (weekly). Exiting current build.')
+          }
+
+          error "Unknown SCHEDULE_TYPE: ${typ}"
         }
       }
     }
 
-    // ================= RUN-NOW PIPELINE =================
-
-    stage('Checkout') { steps { checkout scm } }
+    /********** THE REST ONLY RUNS FOR 'RUN NOW' **********/
+    stage('Checkout') {
+      when { expression { params.RUN_MODE?.trim() == 'Run now' } }
+      steps { checkout scm }
+    }
 
     stage('Agent sanity') {
+      when { expression { params.RUN_MODE?.trim() == 'Run now' } }
       steps {
         bat '''
           echo ===== Agent sanity =====
@@ -216,6 +185,7 @@ pipeline {
     }
 
     stage('Clean outputs') {
+      when { expression { params.RUN_MODE?.trim() == 'Run now' } }
       steps {
         bat '''
           if exist allure-results rmdir /s /q allure-results
@@ -226,6 +196,7 @@ pipeline {
     }
 
     stage('Install deps') {
+      when { expression { params.RUN_MODE?.trim() == 'Run now' } }
       steps {
         bat '''
           call node -v
@@ -237,6 +208,7 @@ pipeline {
     }
 
     stage('Select flows') {
+      when { expression { params.RUN_MODE?.trim() == 'Run now' } }
       steps {
         script {
           def all = [
@@ -244,22 +216,22 @@ pipeline {
             'collection_mode_all','collection_mode_trusted','collection_mode_untrusted',
             'interface_info','ipfix_disable','ipfix_zero','parent_process_check',
             'template_caching_untrusted','before_after_reboot',
-            'aup_should_displayed','aup_should_not_displayed','eula_not_accepted',
-            'negatives'
+            'aup_should_displayed','aup_should_not_displayed','eula_not_accepted','negatives'
           ]
           def chosen = params.RUN_ALL ? all : all.findAll { params[it] }
-          if (!chosen) {
-            echo '⚠️ No checkbox selected — skipping execution (auto-triggered or empty selection).'
-            // Write empty results so email stage can still run if you want; or just fail:
-            error 'No flows selected — pick at least one or enable RUN_ALL'
+          if (!chosen || chosen.isEmpty()) {
+            echo '⚠️ No checkbox selected — skipping execution (auto-triggered build?)'
+            env.CHOSEN = ''
+          } else {
+            env.CHOSEN = chosen.join(',')
+            echo "Flows selected: ${env.CHOSEN}"
           }
-          env.CHOSEN = chosen.join(',')
-          echo "Flows selected: ${env.CHOSEN}"
         }
       }
     }
 
     stage('Run flows (sequential)') {
+      when { expression { params.RUN_MODE?.trim() == 'Run now' && env.CHOSEN } }
       steps {
         script {
           def FLOW = [
@@ -283,7 +255,6 @@ pipeline {
           ]
 
           def results = []
-
           for (suite in env.CHOSEN.split(',')) {
             def flow = FLOW.get(suite, suite)
             echo "=== RUNNING ${suite} [FLOW=${flow}] ==="
@@ -298,48 +269,38 @@ pipeline {
             results << [name: flow, status: status]
           }
 
-          def lines = results.collect { r -> "${r.name}|${r.status}" }.join('\n')
-          writeFile file: 'suite_results.txt', text: lines
+          writeFile file: 'suite_results.txt', text: results.collect { r -> "${r.name}|${r.status}" }.join('\n')
         }
       }
     }
 
     stage('Generate Allure') {
+      when { expression { params.RUN_MODE?.trim() == 'Run now' && fileExists('allure-results') } }
       steps {
         bat '''
           echo ==== Generate Allure ====
-          if not exist allure-results (
-            echo No allure-results found
-            exit /b 1
-          )
           npx allure generate --clean allure-results -o allure-report
         '''
       }
     }
 
     stage('Publish Allure (Jenkins link)') {
+      when { expression { params.RUN_MODE?.trim() == 'Run now' && fileExists('allure-results') } }
       steps {
         script {
-          if (fileExists('allure-results')) {
-            allure(results: [[path: 'allure-results']])
-            echo 'Published Allure results to Jenkins.'
-          } else {
-            echo 'No allure-results to publish.'
-          }
+          allure(results: [[path: 'allure-results']])
+          echo 'Published Allure results to Jenkins.'
         }
       }
     }
 
     stage('Make single-file HTML (no server)') {
+      when { expression { params.RUN_MODE?.trim() == 'Run now' && fileExists('allure-report\\index.html') } }
       steps {
         bat '''
           echo ==== Build single HTML ====
           if not exist tools\\pack-allure-onehtml.js (
             echo Missing tools\\pack-allure-onehtml.js
-            exit /b 1
-          )
-          if not exist allure-report\\index.html (
-            echo Missing allure-report\\index.html
             exit /b 1
           )
           node tools\\pack-allure-onehtml.js allure-report
@@ -355,6 +316,7 @@ pipeline {
     }
 
     stage('Publish & Archive') {
+      when { expression { params.RUN_MODE?.trim() == 'Run now' } }
       steps {
         script {
           archiveArtifacts artifacts: 'allure-results/**, allure-report/**, tools/**, allure-report.single.html, suite_results.txt', fingerprint: true
@@ -375,7 +337,7 @@ pipeline {
                   <td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:700;color:${color};">${status}</td>
                 </tr>
                 """
-              }.join('\\n')
+              }.join('\n')
 
               perSuiteHtml = """
               <p><strong>Per-suite results:</strong></p>
@@ -399,28 +361,22 @@ pipeline {
               body: """<html>
   <body style="font-family:Segoe UI, Arial, sans-serif; font-size:14px; color:#111827;">
     <p>Hi Team,</p>
-
     <p>This is an automated build status update from the Mobile Automation Suite.</p>
-
     <p><strong>Status:</strong>
        <span style="font-weight:700; color:${statusColor};">${status}</span>
     </p>
-
     <p>
       <strong>Executed On:</strong> ${new Date().format("yyyy-MM-dd HH:mm:ss")}<br/>
       <strong>Duration:</strong> ${currentBuild.durationString.replace(' and counting', '')}
     </p>
-
     <p><strong>Executed Test Cases:</strong></p>
   <pre style="background:#f8fafc;border:1px solid #e5e7eb;padding:8px;border-radius:6px;white-space:pre-wrap;margin:0;">
 ${params.RUN_ALL ? 'All test cases executed (RUN_ALL selected)' :
-    (params.collect { k, v -> v && k != 'RUN_ALL' && k != 'EMAILS' ? " - ${k}" : null }
+    (params.collect { k, v -> v && k != 'RUN_ALL' && k != 'EMAILS' && !['Run now','Schedule','Once','Everyday','Weekly'].contains(k) ? " - ${k}" : null }
           .findAll { it != null }
-          .join('\\n'))}
+          .join('\n'))}
   </pre>
-
     ${perSuiteHtml}
-
     <p style="margin-top:12px;">Attached: <em>allure-report.single.html</em>.</p>
   </body>
 </html>""",
