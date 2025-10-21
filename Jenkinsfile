@@ -176,6 +176,14 @@ pipeline {
             negatives                 : 'Negatives'
           ]
 
+          bat '''
+            echo ==== Cleaning previous allure-results ====
+            if exist allure-results rmdir /s /q allure-results
+            if exist allure-report rmdir /s /q allure-report
+            if exist allure-report.single.html del /f /q allure-report.single.html
+          '''
+
+
           // Run each selected suite sequentially
           for (suite in env.CHOSEN.split(',')) {
             def flow = FLOW.get(suite, suite)
