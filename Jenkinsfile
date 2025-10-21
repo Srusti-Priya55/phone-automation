@@ -155,12 +155,17 @@ pipeline {
         script {
           for (f in env.CHOSEN.split(',')) {
             echo "Running flow: ${f}"
-            bat "echo Executing suite ${f}"
-            // replace above with your actual: npx wdio run wdio.conf.ts --suite ${f}
+            int code = bat(returnStatus: true, script: "npx wdio run wdio.conf.ts --suite ${f}")
+            if (code != 0) {
+              error "❌ Suite ${f} failed"
+            } else {
+              echo "✅ Suite ${f} passed"
+            }
           }
         }
       }
     }
+
 
     stage('Generate Allure') {
       when { expression { params.RUN_MODE == 'Run now' || currentBuild.getBuildCauses().any { it._class?.contains("UpstreamCause") } } }
