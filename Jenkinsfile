@@ -113,21 +113,37 @@ pipeline {
 
             // ---- routing ----
             if (params.SCHEDULE_TYPE == 'Once') {
-              if (!params.ONCE_DATE?.trim() || !params.ONCE_TIME?.trim()) {
-                error "Please provide ONCE_DATE and ONCE_TIME"
-              }
-              def sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm")
-              def target = sdf.parse("${params.ONCE_DATE.trim()} ${params.ONCE_TIME.trim()}")
-              def now = new Date()
-              int delay = Math.max(60, ((target.time - now.time) / 1000).intValue()) // Jenkins requires ≥60s to be safe
+                if (!params.ONCE_DATE?.trim() || !params.ONCE_TIME?.trim()) {
+                    error "Please provide ONCE_DATE and ONCE_TIME"
+                }
 
-              echo "Scheduling one-time run in ${delay} seconds..."
-              curlScheduleOnce(delay)
-              echo "✅ One-time schedule set for ${params.ONCE_DATE} ${params.ONCE_TIME}"
-              currentBuild.description = "Scheduled once for ${params.ONCE_DATE} ${params.ONCE_TIME}"
-              currentBuild.result = 'SUCCESS'
-              return // ← do NOT run now
+                def sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm")
+                def target = sdf.parse("${params.ONCE_DATE.trim()} ${params.ONCE_TIME.trim()}")
+                def now = new Date()
+                int delay = Math.max(60, ((target.time - now.time) / 1000).intValue())
+
+                echo "Scheduling one-time run in ${delay} seconds..."
+
+                // Ask Jenkins itself to queue the build
+                def qid = Jenkins.instance.queue.schedule(
+                    Jenkins.instance.getItemByFullName(env.JOB_NAME),
+                    delay * 1000,
+                    new hudson.model.Cause.UserIdCause(),
+                    new hudson.model.ParametersAction(currentBuild.rawBuild.getAction(hudson.model.ParametersAction))
+                )
+
+                if (qid == null) {
+                    error "Failed to schedule delayed build."
+                }
+
+                echo "✅ One-time build queued for ${params.ONCE_DATE} ${params.ONCE_TIME}"
+                currentBuild.description = "Scheduled once for ${params.ONCE_DATE} ${params.ONCE_TIME}"
+                currentBuild.result = 'SUCCESS'
+
+                // ⛔ stop right here — do NOT continue the current pipeline
+                return
             }
+
 
             if (params.SCHEDULE_TYPE == 'Everyday') {
               if (!params.EVERY_TIME?.trim()) { error "Please provide EVERY_TIME (HH:mm)" }
