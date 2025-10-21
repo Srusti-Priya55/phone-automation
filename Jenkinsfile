@@ -158,24 +158,37 @@ pipeline {
       }
     }
 
-    stage('Select flows') {
-      when { expression { params.RUN_MODE == 'Run now' } }
-      steps {
-        script {
-          def all = [
-            'install_adb','install_play','aggregation_check','tnd_check',
-            'collection_mode_all','collection_mode_trusted','collection_mode_untrusted',
-            'interface_info','ipfix_disable','ipfix_zero','parent_process_check',
-            'template_caching_untrusted','before_after_reboot',
-            'aup_should_displayed','aup_should_not_displayed','eula_not_accepted','negatives'
-          ]
-          def chosen = params.RUN_ALL ? all : all.findAll { params[it] }
-          if (!chosen) error 'No flows selected — pick at least one or enable RUN_ALL'
-          env.CHOSEN = chosen.join(',')
-          echo "Flows selected: ${env.CHOSEN}"
-        }
+stage('Select flows') {
+  when { expression { params.RUN_MODE == 'Run now' } }
+  steps {
+    script {
+      def all = [
+        'install_adb','install_play','aggregation_check','tnd_check',
+        'collection_mode_all','collection_mode_trusted','collection_mode_untrusted',
+        'interface_info','ipfix_disable','ipfix_zero','parent_process_check',
+        'template_caching_untrusted','before_after_reboot',
+        'aup_should_displayed','aup_should_not_displayed','eula_not_accepted','negatives'
+      ]
+      
+      // 🧠 Jenkins sometimes returns null for unchecked booleans — handle that safely
+      def selected = all.findAll { params[it]?.toString() == 'true' }
+
+      // 🧩 Allow RUN_ALL to override, or selected to be non-empty
+      if (params.RUN_ALL) {
+        env.CHOSEN = all.join(',')
+        echo "All flows enabled via RUN_ALL"
+      } else if (selected) {
+        env.CHOSEN = selected.join(',')
+        echo "Flows selected: ${env.CHOSEN}"
+      } else {
+        echo "⚠️ No checkbox selected — skipping execution (auto-triggered build?)"
+        currentBuild.result = 'SUCCESS'
+        return
       }
     }
+  }
+}
+
 
     stage('Run flows (sequential)') {
       when { expression { params.RUN_MODE == 'Run now' } }
