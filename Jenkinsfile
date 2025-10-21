@@ -2,31 +2,35 @@ pipeline {
   agent any
 
   parameters {
-    // ---------- Run Mode & Scheduling ----------
     choice(name: 'RUN_MODE', choices: ['Run now', 'Schedule'], description: 'Run immediately or schedule')
     choice(name: 'SCHEDULE_TYPE', choices: ['Once', 'Everyday', 'Weekly'], description: 'If Schedule selected')
 
-    // Colored hints for user clarity
-    text(name: 'NOTE',
-         defaultValue: '''
-🟢 **Scheduling Guide:**
+    // Clear visual guide for users
+    text(name: 'GUIDE', defaultValue: '''
+──────────────────────────────────────────────
+🟩 **If you select "Once"** → Fill:
+    • ONCE_DATE (YYYY-MM-DD)
+    • ONCE_TIME (HH:mm 24h)
 
-- 🟩 **Once** → Fill: `ONCE_DATE` and `ONCE_TIME`
-- 🟨 **Everyday** → Fill: `EVERY_TIME`
-- 🟦 **Weekly** → Fill: `WEEK_DAYS` and `WEEK_TIME`
+🟨 **If you select "Everyday"** → Fill:
+    • EVERY_TIME (HH:mm 24h)
 
-(Fields for other modes can remain blank.)
-         '''.stripIndent(),
-         description: 'Highlight guide for the scheduling fields.')
+🟦 **If you select "Weekly"** → Fill:
+    • WEEK_DAYS (Mon,Tue,Wed,...)
+    • WEEK_TIME (HH:mm 24h)
 
-    // ---------- Schedule Parameters ----------
-    string(name: 'ONCE_DATE', defaultValue: '', description: '🟩 Once: date (YYYY-MM-DD)')
-    string(name: 'ONCE_TIME', defaultValue: '', description: '🟩 Once: time (HH:mm 24h)')
-    string(name: 'EVERY_TIME', defaultValue: '', description: '🟨 Everyday: time (HH:mm 24h)')
-    string(name: 'WEEK_DAYS', defaultValue: '', description: '🟦 Weekly: Mon,Tue,Wed,Thu,Fri,Sat,Sun')
-    string(name: 'WEEK_TIME', defaultValue: '', description: '🟦 Weekly: time (HH:mm 24h)')
+(Leave others blank.)
+──────────────────────────────────────────────
+''', description: 'Scheduling field guide — read this before running.' )
 
-    // ---------- Test Case Flags ----------
+    // Schedule parameters
+    string(name: 'ONCE_DATE', defaultValue: '', description: 'Once: date (YYYY-MM-DD)')
+    string(name: 'ONCE_TIME', defaultValue: '', description: 'Once: time (HH:mm 24h)')
+    string(name: 'EVERY_TIME', defaultValue: '', description: 'Everyday: time (HH:mm 24h)')
+    string(name: 'WEEK_DAYS', defaultValue: '', description: 'Weekly: Mon,Tue,Wed,Thu,Fri,Sat,Sun')
+    string(name: 'WEEK_TIME', defaultValue: '', description: 'Weekly: time (HH:mm 24h)')
+
+    // Test case flags
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all flows')
     booleanParam(name: 'install_adb', defaultValue: false, description: '')
     booleanParam(name: 'install_play', defaultValue: false, description: '')
@@ -194,14 +198,10 @@ pipeline {
             if exist allure-report.single.html del /f /q allure-report.single.html
           '''
 
-
-          // Run each selected suite sequentially
           for (suite in env.CHOSEN.split(',')) {
             def flow = FLOW.get(suite, suite)
             echo "=== RUNNING ${suite} [FLOW=${flow}] ==="
-
             withEnv(["CURRENT_FLOW=${flow}"]) {
-              // catchError ensures Allure is generated even if one fails
               catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                 bat "npx wdio run wdio.conf.ts --suite ${suite}"
               }
@@ -210,7 +210,6 @@ pipeline {
         }
       }
     }
-
 
     stage('Publish Allure (Jenkins link)') {
       when { expression { env.SCHEDULE_ONLY == 'false' } }
@@ -256,40 +255,30 @@ pipeline {
       steps {
         script {
           archiveArtifacts artifacts: 'allure-results/**, allure-report/**, tools/**, allure-report.single.html', fingerprint: true
-
           def recipients = (params.EMAILS ?: '').trim()
           if (recipients) {
-            def status      = currentBuild.currentResult
+            def status = currentBuild.currentResult
             def statusColor = (status == 'SUCCESS') ? '#16a34a' : '#dc2626'
-
             emailext(
               to: recipients,
               subject: "Mobile Sanity Build #${env.BUILD_NUMBER} ${status}",
               mimeType: 'text/html',
-              body: """<html>
-              <body style="font-family:Segoe UI, Arial, sans-serif; font-size:14px; color:#111827;">
+              body: """<html><body style='font-family:Segoe UI, Arial, sans-serif; font-size:14px;'>
                 <p>Hi Team,</p>
                 <p>This is an automated build status update from the Mobile Automation Suite.</p>
                 <p><strong>Status:</strong>
-                  <span style="font-weight:700; color:${statusColor};">${status}</span>
-                </p>
-                <p>
-                  <strong>Executed On:</strong> ${new Date().format("yyyy-MM-dd HH:mm:ss")}<br/>
-                  <strong>Duration:</strong> ${currentBuild.durationString.replace(' and counting', '')}
-                </p>
+                  <span style='color:${statusColor}; font-weight:bold;'>${status}</span></p>
+                <p><strong>Executed On:</strong> ${new Date().format("yyyy-MM-dd HH:mm:ss")}<br/>
+                   <strong>Duration:</strong> ${currentBuild.durationString.replace(' and counting', '')}</p>
                 <p><strong>Executed Test Cases:</strong></p>
-                <pre style="background:#f8fafc;border:1px solid #e5e7eb;padding:8px;border-radius:6px;white-space:pre-wrap;margin:0;">
-                ${params.RUN_ALL ? 'All test cases executed (RUN_ALL selected)' :
-                    (params.collect { k, v -> v && k != 'RUN_ALL' && k != 'EMAILS' ? " - ${k}" : null }
-                          .findAll { it != null }
-                          .join('\\n'))}
+                <pre style='background:#f8fafc;border:1px solid #e5e7eb;padding:8px;border-radius:6px;'>
+${params.RUN_ALL ? 'All test cases executed (RUN_ALL selected)' :
+  (params.collect { k, v -> v && k != 'RUN_ALL' && k != 'EMAILS' ? " - ${k}" : null }.findAll { it != null }.join('\\n'))}
                 </pre>
-                <p style="margin-top:12px;">Attached: <em>allure-report.single.html</em>.</p>
-              </body>
-            </html>""",
+                <p>Attached: <em>allure-report.single.html</em>.</p>
+              </body></html>""",
               attachmentsPattern: 'allure-report.single.html'
             )
-
           } else {
             echo 'EMAILS empty — skipping email.'
           }
