@@ -46,7 +46,6 @@ pipeline {
       steps {
         script {
           if (params.RUN_MODE == 'Schedule') {
-
             def delaySeconds = 0
             def cronExpr = ''
 
@@ -55,24 +54,16 @@ pipeline {
                 error "Please provide ONCE_DATE and ONCE_TIME"
               }
 
-              // Safe Groovy time calc
-              def now = System.currentTimeMillis()
-              def dateParts = params.ONCE_DATE.split('-')
-              def timeParts = params.ONCE_TIME.split(':')
-              def target = new GregorianCalendar(
-                dateParts[0].toInteger(),
-                dateParts[1].toInteger() - 1,
-                dateParts[2].toInteger(),
-                timeParts[0].toInteger(),
-                timeParts[1].toInteger()
-              ).timeInMillis
-              delaySeconds = ((target - now) / 1000).intValue()
+              def now = new Date()
+              def dateTimeStr = "${params.ONCE_DATE} ${params.ONCE_TIME}"
+              def targetMillis = Date.parse("yyyy-MM-dd HH:mm", dateTimeStr).getTime()
+              delaySeconds = ((targetMillis - now.time) / 1000).intValue()
               if (delaySeconds < 60) delaySeconds = 60
 
               echo "Scheduling one-time run in ${delaySeconds} seconds"
-              
-              // Build complete parameter string
+
               def paramString = [
+                "RUN_MODE=Run now", // ensure next build runs immediately
                 "RUN_ALL=${params.RUN_ALL}",
                 "install_adb=${params.install_adb}",
                 "install_play=${params.install_play}",
@@ -94,7 +85,6 @@ pipeline {
                 "EMAILS=${params.EMAILS}"
               ].collect { "--data-urlencode \"${it}\"" }.join(" ^\n")
 
-              // REST trigger
               bat label: 'Schedule', script: """
                 curl -X POST "http://localhost:8080/job/${env.JOB_NAME}/buildWithParameters" ^
                 --user "srusti:117b7e239d09ff5b11e0fc2dbee0cae33f" ^
@@ -136,6 +126,7 @@ pipeline {
               currentBuild.result = 'SUCCESS'
               return
             }
+
           } else {
             echo "Run now selected — running immediately."
           }
@@ -143,12 +134,15 @@ pipeline {
       }
     }
 
-    // ==================== EXISTING STAGES ====================
+    // ==================== EXISTING STAGES (Run Now only) ====================
+
     stage('Checkout') {
+      when { expression { params.RUN_MODE == 'Run now' } }
       steps { checkout scm }
     }
 
     stage('Agent sanity') {
+      when { expression { params.RUN_MODE == 'Run now' } }
       steps {
         bat '''
           echo ===== Agent sanity =====
@@ -161,6 +155,7 @@ pipeline {
     }
 
     stage('Clean outputs') {
+      when { expression { params.RUN_MODE == 'Run now' } }
       steps {
         bat '''
           if exist allure-results rmdir /s /q allure-results
@@ -171,6 +166,7 @@ pipeline {
     }
 
     stage('Install deps') {
+      when { expression { params.RUN_MODE == 'Run now' } }
       steps {
         bat '''
           call node -v
@@ -182,6 +178,7 @@ pipeline {
     }
 
     stage('Select flows') {
+      when { expression { params.RUN_MODE == 'Run now' } }
       steps {
         script {
           def all = [
@@ -200,6 +197,7 @@ pipeline {
     }
 
     stage('Run flows (sequential)') {
+      when { expression { params.RUN_MODE == 'Run now' } }
       steps {
         script {
           def FLOW = [
@@ -247,6 +245,7 @@ pipeline {
     }
 
     stage('Generate Allure') {
+      when { expression { params.RUN_MODE == 'Run now' } }
       steps {
         bat '''
           echo ==== Generate Allure ====
@@ -260,6 +259,7 @@ pipeline {
     }
 
     stage('Publish Allure (Jenkins link)') {
+      when { expression { params.RUN_MODE == 'Run now' } }
       steps {
         script {
           if (fileExists('allure-results')) {
@@ -273,6 +273,7 @@ pipeline {
     }
 
     stage('Make single-file HTML (no server)') {
+      when { expression { params.RUN_MODE == 'Run now' } }
       steps {
         bat '''
           echo ==== Build single HTML ====
@@ -297,6 +298,7 @@ pipeline {
     }
 
     stage('Publish & Archive') {
+      when { expression { params.RUN_MODE == 'Run now' } }
       steps {
         script {
           archiveArtifacts artifacts: 'allure-results/**, allure-report/**, tools/**, allure-report.single.html, suite_results.txt', fingerprint: true
