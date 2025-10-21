@@ -9,6 +9,7 @@ pipeline {
     string(name: 'EVERY_TIME', defaultValue: '', description: 'Everyday: time (HH:mm 24h)')
     string(name: 'WEEK_DAYS', defaultValue: '', description: 'Weekly: Mon,Tue,Wed,Thu,Fri,Sat,Sun')
     string(name: 'WEEK_TIME', defaultValue: '', description: 'Weekly: time (HH:mm 24h)')
+
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all flows')
 
     booleanParam(name: 'install_adb', defaultValue: false, description: '')
@@ -33,56 +34,107 @@ pipeline {
 
   environment {
     NODE_HOME = "C:\\Program Files\\nodejs"
-    PATH = "${env.NODE_HOME};${env.PATH}"
+    PATH      = "${env.NODE_HOME};${env.PATH}"
   }
 
   options { timestamps() }
 
   stages {
+
+    // ==================== SCHEDULER ====================
     stage('Schedule or Run') {
       steps {
         script {
           if (params.RUN_MODE == 'Schedule') {
+
+            def delaySeconds = 0
             def cronExpr = ''
+
             if (params.SCHEDULE_TYPE == 'Once') {
               if (!params.ONCE_DATE || !params.ONCE_TIME) {
                 error "Please provide ONCE_DATE and ONCE_TIME"
               }
-              def dt = "${params.ONCE_DATE} ${params.ONCE_TIME}"
-              def targetMillis = java.time.ZonedDateTime.parse("${params.ONCE_DATE}T${params.ONCE_TIME}:00+05:30").toInstant().toEpochMilli()
-              def delaySeconds = ((targetMillis - System.currentTimeMillis()) / 1000).intValue()
-              echo "Scheduling one-time run in ${delaySeconds} seconds"
+
+              // Safe Groovy time calc
+              def now = System.currentTimeMillis()
+              def dateParts = params.ONCE_DATE.split('-')
+              def timeParts = params.ONCE_TIME.split(':')
+              def target = new GregorianCalendar(
+                dateParts[0].toInteger(),
+                dateParts[1].toInteger() - 1,
+                dateParts[2].toInteger(),
+                timeParts[0].toInteger(),
+                timeParts[1].toInteger()
+              ).timeInMillis
+              delaySeconds = ((target - now) / 1000).intValue()
               if (delaySeconds < 60) delaySeconds = 60
-              def cmd = """curl -X POST "http://localhost:8080/job/${env.JOB_NAME}/buildWithParameters" \
-                --user "srusti:117b7e239d09ff5b11e0fc2dbee0cae33f" \
-                --data-urlencode "delay=${delaySeconds}sec" \
-                --data-urlencode "RUN_ALL=${params.RUN_ALL}" """
-              echo "Triggering REST API schedule..."
-              bat label: 'schedule', script: cmd
-              error "Scheduled successfully for ${params.ONCE_DATE} ${params.ONCE_TIME}"
-            } 
+
+              echo "Scheduling one-time run in ${delaySeconds} seconds"
+              
+              // Build complete parameter string
+              def paramString = [
+                "RUN_ALL=${params.RUN_ALL}",
+                "install_adb=${params.install_adb}",
+                "install_play=${params.install_play}",
+                "aggregation_check=${params.aggregation_check}",
+                "tnd_check=${params.tnd_check}",
+                "collection_mode_all=${params.collection_mode_all}",
+                "collection_mode_trusted=${params.collection_mode_trusted}",
+                "collection_mode_untrusted=${params.collection_mode_untrusted}",
+                "interface_info=${params.interface_info}",
+                "ipfix_disable=${params.ipfix_disable}",
+                "ipfix_zero=${params.ipfix_zero}",
+                "parent_process_check=${params.parent_process_check}",
+                "template_caching_untrusted=${params.template_caching_untrusted}",
+                "before_after_reboot=${params.before_after_reboot}",
+                "aup_should_displayed=${params.aup_should_displayed}",
+                "aup_should_not_displayed=${params.aup_should_not_displayed}",
+                "eula_not_accepted=${params.eula_not_accepted}",
+                "negatives=${params.negatives}",
+                "EMAILS=${params.EMAILS}"
+              ].collect { "--data-urlencode \"${it}\"" }.join(" ^\n")
+
+              // REST trigger
+              bat label: 'Schedule', script: """
+                curl -X POST "http://localhost:8080/job/${env.JOB_NAME}/buildWithParameters" ^
+                --user "srusti:117b7e239d09ff5b11e0fc2dbee0cae33f" ^
+                ${paramString} ^
+                --data-urlencode "delay=${delaySeconds}sec"
+              """
+
+              echo "✅ Job scheduled successfully for ${params.ONCE_DATE} ${params.ONCE_TIME}"
+              currentBuild.result = 'SUCCESS'
+              return
+            }
+
             else if (params.SCHEDULE_TYPE == 'Everyday') {
               if (!params.EVERY_TIME) { error "Please provide EVERY_TIME" }
               def parts = params.EVERY_TIME.split(':')
               cronExpr = "${parts[1]} ${parts[0]} * * *"
-            } 
+            }
+
             else if (params.SCHEDULE_TYPE == 'Weekly') {
-              if (!params.WEEK_DAYS || !params.WEEK_TIME) { error "Please provide WEEK_DAYS and WEEK_TIME" }
+              if (!params.WEEK_DAYS || !params.WEEK_TIME) {
+                error "Please provide WEEK_DAYS and WEEK_TIME"
+              }
               def parts = params.WEEK_TIME.split(':')
-              def days = params.WEEK_DAYS.toLowerCase().replaceAll('mon','1').replaceAll('tue','2')
-                .replaceAll('wed','3').replaceAll('thu','4').replaceAll('fri','5')
-                .replaceAll('sat','6').replaceAll('sun','0')
+              def days = params.WEEK_DAYS.toLowerCase()
+                .replaceAll('mon','1').replaceAll('tue','2').replaceAll('wed','3')
+                .replaceAll('thu','4').replaceAll('fri','5').replaceAll('sat','6')
+                .replaceAll('sun','0')
               cronExpr = "${parts[1]} ${parts[0]} * * ${days}"
             }
 
             if (cronExpr) {
               echo "Cron Expression: ${cronExpr}"
-              writeFile file: 'cron.txt', text: cronExpr
-              def cmd = """curl -X POST "http://localhost:8080/job/${env.JOB_NAME}/configure" \
-                --user "admin:admin" \
-                --data-urlencode "spec=${cronExpr}" """
-              bat label: 'schedule', script: cmd
-              error "✅ Job scheduled successfully."
+              bat label: 'Schedule', script: """
+                curl -X POST "http://localhost:8080/job/${env.JOB_NAME}/configure" ^
+                --user "srusti:117b7e239d09ff5b11e0fc2dbee0cae33f" ^
+                --data-urlencode "spec=${cronExpr}"
+              """
+              echo "✅ Job scheduled successfully (cron)."
+              currentBuild.result = 'SUCCESS'
+              return
             }
           } else {
             echo "Run now selected — running immediately."
@@ -91,7 +143,7 @@ pipeline {
       }
     }
 
-    // ========== Original flow continues ==========
+    // ==================== EXISTING STAGES ====================
     stage('Checkout') {
       steps { checkout scm }
     }
@@ -137,8 +189,7 @@ pipeline {
             'collection_mode_all','collection_mode_trusted','collection_mode_untrusted',
             'interface_info','ipfix_disable','ipfix_zero','parent_process_check',
             'template_caching_untrusted','before_after_reboot',
-            'aup_should_displayed','aup_should_not_displayed','eula_not_accepted',
-            'negatives'
+            'aup_should_displayed','aup_should_not_displayed','eula_not_accepted','negatives'
           ]
           def chosen = params.RUN_ALL ? all : all.findAll { params[it] }
           if (!chosen) error 'No flows selected — pick at least one or enable RUN_ALL'
