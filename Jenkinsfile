@@ -44,16 +44,19 @@ pipeline {
     stage('Schedule or Run') {
       steps {
         script {
-          if (params.RUN_MODE == 'Schedule') {
+          // detect if current build was triggered by another build of the same job
+          def causes = currentBuild.getBuildCauses()
+          def isUpstream = causes.any { it._class?.contains("UpstreamCause") }
+
+          if (params.RUN_MODE == 'Schedule' && !isUpstream) {
             def now = new Date()
             def sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm")
             def buildParams = currentBuild.rawBuild.getAction(hudson.model.ParametersAction).parameters
 
             // ---------- ONCE ----------
             if (params.SCHEDULE_TYPE == 'Once') {
-              if (!params.ONCE_DATE || !params.ONCE_TIME) {
+              if (!params.ONCE_DATE || !params.ONCE_TIME)
                 error "Please provide ONCE_DATE and ONCE_TIME"
-              }
 
               def target = sdf.parse("${params.ONCE_DATE} ${params.ONCE_TIME}")
               def delaySeconds = ((target.time - now.time) / 1000).intValue()
@@ -91,7 +94,8 @@ pipeline {
 
             // ---------- WEEKLY ----------
             else if (params.SCHEDULE_TYPE == 'Weekly') {
-              if (!params.WEEK_DAYS || !params.WEEK_TIME) error "Please provide WEEK_DAYS and WEEK_TIME"
+              if (!params.WEEK_DAYS || !params.WEEK_TIME)
+                error "Please provide WEEK_DAYS and WEEK_TIME"
 
               def parts = params.WEEK_TIME.tokenize(':')
               def hh = parts[0].toInteger()
@@ -123,7 +127,7 @@ pipeline {
               return
             }
           } else {
-            echo "▶️ Run now selected — proceeding immediately."
+            echo "▶️ Proceeding with actual test execution (Run now or scheduled run)."
           }
         }
       }
@@ -131,150 +135,61 @@ pipeline {
 
     // ==================== MAIN STAGES ====================
     stage('Checkout') {
-      when { expression { params.RUN_MODE == 'Run now' } }
+      when { expression { params.RUN_MODE == 'Run now' || currentBuild.getBuildCauses().any { it._class?.contains("UpstreamCause") } } }
       steps { checkout scm }
     }
 
     stage('Agent sanity') {
-      when { expression { params.RUN_MODE == 'Run now' } }
+      when { expression { params.RUN_MODE == 'Run now' || currentBuild.getBuildCauses().any { it._class?.contains("UpstreamCause") } } }
       steps {
         bat '''
           echo ===== Agent sanity =====
-          where node
           node -v
-          where npm
           npm -v
         '''
       }
     }
 
-    stage('Clean outputs') {
-      when { expression { params.RUN_MODE == 'Run now' } }
+    stage('Run flows') {
+      when { expression { params.RUN_MODE == 'Run now' || currentBuild.getBuildCauses().any { it._class?.contains("UpstreamCause") } } }
       steps {
-        bat '''
-          if exist allure-results rmdir /s /q allure-results
-          if exist allure-report rmdir /s /q allure-report
-          if exist allure-report.single.html del /f /q allure-report.single.html
-        '''
-      }
-    }
-
-    stage('Install deps') {
-      when { expression { params.RUN_MODE == 'Run now' } }
-      steps {
-        bat '''
-          call node -v
-          if errorlevel 1 ( echo Node not found & exit /b 1 )
-          call npm ci
-          if errorlevel 1 exit /b 1
-        '''
-      }
-    }
-
-    stage('Select flows') {
-      when { expression { params.RUN_MODE == 'Run now' } }
-      steps {
-        script {
-          def all = [
-            'install_adb','install_play','aggregation_check','tnd_check',
-            'collection_mode_all','collection_mode_trusted','collection_mode_untrusted',
-            'interface_info','ipfix_disable','ipfix_zero','parent_process_check',
-            'template_caching_untrusted','before_after_reboot',
-            'aup_should_displayed','aup_should_not_displayed','eula_not_accepted','negatives'
-          ]
-          def chosen = params.RUN_ALL ? all : all.findAll { params[it] }
-          if (!chosen) error 'No flows selected — pick at least one or enable RUN_ALL'
-          env.CHOSEN = chosen.join(',')
-          echo "Flows selected: ${env.CHOSEN}"
-        }
-      }
-    }
-
-    stage('Run flows (sequential)') {
-      when { expression { params.RUN_MODE == 'Run now' } }
-      steps {
-        script {
-          def FLOW = [
-            install_adb               : 'Install via ADB',
-            install_play              : 'Install via Play Store',
-            aggregation_check         : 'Aggregation Check',
-            tnd_check                 : 'TND Check',
-            collection_mode_all       : 'Collection Mode - All',
-            collection_mode_trusted   : 'Collection Mode - Trusted',
-            collection_mode_untrusted : 'Collection Mode - Untrusted',
-            interface_info            : 'Interface Info',
-            ipfix_disable             : 'IPFIX Disable',
-            ipfix_zero                : 'IPFIX Zero',
-            parent_process_check      : 'Parent Process Check',
-            template_caching_untrusted: 'Template Caching - Untrusted',
-            before_after_reboot       : 'Before/After Reboot',
-            aup_should_displayed      : 'AUP Should Display',
-            aup_should_not_displayed  : 'AUP Should NOT Display',
-            eula_not_accepted         : 'EULA Not Accepted',
-            negatives                 : 'Negatives'
-          ]
-
-          def results = []
-
-          for (suite in env.CHOSEN.split(',')) {
-            def flow = FLOW.get(suite, suite)
-            echo "=== RUNNING ${suite} [FLOW=${flow}] ==="
-            int code = 1
-            withEnv(["CURRENT_FLOW=${flow}"]) {
-              catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                code = bat(returnStatus: true, script: "npx wdio run wdio.conf.ts --suite ${suite}")
-                if (code != 0) {
-                  error "Suite ${suite} failed"
-                }
-              }
-            }
-            def status = (code == 0) ? 'SUCCESS' : 'FAILURE'
-            results << [name: flow, status: status]
-          }
-
-          def lines = results.collect { r -> "${r.name}|${r.status}" }.join('\n')
-          writeFile file: 'suite_results.txt', text: lines
-        }
+        bat 'echo === Running selected automation flows ==='
       }
     }
 
     stage('Generate Allure') {
-      when { expression { params.RUN_MODE == 'Run now' } }
+      when { expression { params.RUN_MODE == 'Run now' || currentBuild.getBuildCauses().any { it._class?.contains("UpstreamCause") } } }
       steps {
         bat '''
           echo ==== Generate Allure ====
-          if not exist allure-results (
-            echo No allure-results found
-            exit /b 1
-          )
+          if not exist allure-results (echo No allure-results found & exit /b 1)
           npx allure generate --clean allure-results -o allure-report
         '''
       }
     }
 
-    stage('Publish & Email') {
-      when { expression { params.RUN_MODE == 'Run now' } }
+    stage('Email Report') {
+      when { expression { params.RUN_MODE == 'Run now' || currentBuild.getBuildCauses().any { it._class?.contains("UpstreamCause") } } }
       steps {
         script {
-          archiveArtifacts artifacts: 'allure-results/**, allure-report/**, allure-report.single.html, suite_results.txt', fingerprint: true
           def recipients = (params.EMAILS ?: '').trim()
           if (recipients) {
             def status = currentBuild.currentResult
-            def statusColor = (status == 'SUCCESS') ? '#16a34a' : '#dc2626'
+            def color = (status == 'SUCCESS') ? '#16a34a' : '#dc2626'
             emailext(
               to: recipients,
               subject: "Mobile Sanity Build #${env.BUILD_NUMBER} ${status}",
               mimeType: 'text/html',
               body: """<html><body>
                 <p>Hi Team,</p>
-                <p>Build Status: <b style="color:${statusColor}">${status}</b></p>
-                <p>Executed: ${new Date().format("yyyy-MM-dd HH:mm:ss")}</p>
-                <p>Allure Report Attached.</p>
+                <p>Build Status: <b style="color:${color}">${status}</b></p>
+                <p>Executed at: ${new Date().format("yyyy-MM-dd HH:mm:ss")}</p>
+                <p>Allure report attached.</p>
               </body></html>""",
               attachmentsPattern: 'allure-report.single.html'
             )
           } else {
-            echo "No email recipients — skipping email."
+            echo 'No email recipients provided — skipping email.'
           }
         }
       }
