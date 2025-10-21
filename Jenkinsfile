@@ -40,24 +40,26 @@ pipeline {
 
   stages {
 
+    // ==================== SCHEDULER ====================
     stage('Schedule or Run') {
       steps {
         script {
           if (params.RUN_MODE == 'Schedule') {
-
-            // ---------- COMMON PARAMS ----------
-            def buildParams = currentBuild.rawBuild.getAction(hudson.model.ParametersAction).parameters
-            def sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm")
             def now = new Date()
+            def sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm")
+            def buildParams = currentBuild.rawBuild.getAction(hudson.model.ParametersAction).parameters
 
             // ---------- ONCE ----------
             if (params.SCHEDULE_TYPE == 'Once') {
-              if (!params.ONCE_DATE || !params.ONCE_TIME) error "Please provide ONCE_DATE and ONCE_TIME"
+              if (!params.ONCE_DATE || !params.ONCE_TIME) {
+                error "Please provide ONCE_DATE and ONCE_TIME"
+              }
+
               def target = sdf.parse("${params.ONCE_DATE} ${params.ONCE_TIME}")
               def delaySeconds = ((target.time - now.time) / 1000).intValue()
               if (delaySeconds < 60) delaySeconds = 60
 
-              echo "⏱ Scheduling one-time run in ${delaySeconds} seconds (${target})"
+              echo "⏱ One-time schedule: running after ${delaySeconds} seconds (${target})"
               build job: env.JOB_NAME, wait: false, parameters: buildParams, quietPeriod: delaySeconds
               echo "✅ One-time job scheduled successfully."
               currentBuild.result = 'SUCCESS'
@@ -67,7 +69,11 @@ pipeline {
             // ---------- EVERYDAY ----------
             else if (params.SCHEDULE_TYPE == 'Everyday') {
               if (!params.EVERY_TIME) error "Please provide EVERY_TIME"
-              def (hh, mm) = params.EVERY_TIME.split(':')*.toInteger()
+
+              def parts = params.EVERY_TIME.tokenize(':')
+              def hh = parts[0].toInteger()
+              def mm = parts[1].toInteger()
+
               def cal = Calendar.getInstance()
               cal.set(Calendar.HOUR_OF_DAY, hh)
               cal.set(Calendar.MINUTE, mm)
@@ -75,10 +81,10 @@ pipeline {
               if (cal.time.before(now)) cal.add(Calendar.DATE, 1)
 
               def delaySeconds = ((cal.time.time - now.time) / 1000).intValue()
-              echo "⏰ Scheduling daily run at ${params.EVERY_TIME} (first trigger in ${delaySeconds} sec)."
+              echo "⏰ Daily run scheduled at ${params.EVERY_TIME}, next run after ${delaySeconds} sec (${cal.time})"
 
               build job: env.JOB_NAME, wait: false, parameters: buildParams, quietPeriod: delaySeconds
-              echo "✅ First daily run scheduled. Please use Jenkins cron for persistent scheduling."
+              echo "✅ First daily run scheduled."
               currentBuild.result = 'SUCCESS'
               return
             }
@@ -86,16 +92,19 @@ pipeline {
             // ---------- WEEKLY ----------
             else if (params.SCHEDULE_TYPE == 'Weekly') {
               if (!params.WEEK_DAYS || !params.WEEK_TIME) error "Please provide WEEK_DAYS and WEEK_TIME"
-              def daysMap = ['sun':0,'mon':1,'tue':2,'wed':3,'thu':4,'fri':5,'sat':6]
-              def dayList = params.WEEK_DAYS.toLowerCase().split(',').collect{it.trim()}
-              def (hh, mm) = params.WEEK_TIME.split(':')*.toInteger()
 
+              def parts = params.WEEK_TIME.tokenize(':')
+              def hh = parts[0].toInteger()
+              def mm = parts[1].toInteger()
+              def daysMap = ['sun':1,'mon':2,'tue':3,'wed':4,'thu':5,'fri':6,'sat':7]
               def nowCal = Calendar.getInstance()
               def soonest = null
 
+              def dayList = params.WEEK_DAYS.toLowerCase().split(',').collect { it.trim() }
+
               for (d in dayList) {
                 if (!daysMap.containsKey(d)) continue
-                def c = nowCal.clone()
+                def c = (Calendar) nowCal.clone()
                 c.set(Calendar.DAY_OF_WEEK, daysMap[d])
                 c.set(Calendar.HOUR_OF_DAY, hh)
                 c.set(Calendar.MINUTE, mm)
@@ -104,25 +113,23 @@ pipeline {
                 if (soonest == null || c.time.before(soonest.time)) soonest = c
               }
 
-              if (soonest == null) error "Invalid WEEK_DAYS input — expected e.g. MON,TUE"
+              if (soonest == null) error "Invalid WEEK_DAYS input — e.g. MON,TUE"
               def delaySeconds = ((soonest.time.time - now.time) / 1000).intValue()
+              echo "📅 Weekly run scheduled on ${params.WEEK_DAYS} at ${params.WEEK_TIME} (in ${delaySeconds} sec)"
 
-              echo "📅 Scheduling weekly run on ${params.WEEK_DAYS} at ${params.WEEK_TIME} (in ${delaySeconds} sec)"
               build job: env.JOB_NAME, wait: false, parameters: buildParams, quietPeriod: delaySeconds
               echo "✅ First weekly run scheduled."
               currentBuild.result = 'SUCCESS'
               return
             }
-          } 
-          else {
+          } else {
             echo "▶️ Run now selected — proceeding immediately."
           }
         }
       }
     }
 
-    // ==================== MAIN STAGES (Run Now only) ====================
-
+    // ==================== MAIN STAGES ====================
     stage('Checkout') {
       when { expression { params.RUN_MODE == 'Run now' } }
       steps { checkout scm }
@@ -245,115 +252,29 @@ pipeline {
       }
     }
 
-    stage('Publish Allure (Jenkins link)') {
+    stage('Publish & Email') {
       when { expression { params.RUN_MODE == 'Run now' } }
       steps {
         script {
-          if (fileExists('allure-results')) {
-            allure(results: [[path: 'allure-results']])
-            echo 'Published Allure results to Jenkins.'
-          } else {
-            echo 'No allure-results to publish.'
-          }
-        }
-      }
-    }
-
-    stage('Make single-file HTML (no server)') {
-      when { expression { params.RUN_MODE == 'Run now' } }
-      steps {
-        bat '''
-          echo ==== Build single HTML ====
-          if not exist tools\\pack-allure-onehtml.js (
-            echo Missing tools\\pack-allure-onehtml.js
-            exit /b 1
-          )
-          if not exist allure-report\\index.html (
-            echo Missing allure-report\\index.html
-            exit /b 1
-          )
-          node tools\\pack-allure-onehtml.js allure-report
-          if not exist allure-report\\allure-report.offline.html (
-            echo Single HTML not created
-            dir allure-report
-            exit /b 1
-          )
-          copy /y "allure-report\\allure-report.offline.html" "allure-report.single.html" >nul
-          echo Created: allure-report.single.html
-        '''
-      }
-    }
-
-    stage('Publish & Archive') {
-      when { expression { params.RUN_MODE == 'Run now' } }
-      steps {
-        script {
-          archiveArtifacts artifacts: 'allure-results/**, allure-report/**, tools/**, allure-report.single.html, suite_results.txt', fingerprint: true
-
+          archiveArtifacts artifacts: 'allure-results/**, allure-report/**, allure-report.single.html, suite_results.txt', fingerprint: true
           def recipients = (params.EMAILS ?: '').trim()
           if (recipients) {
-
-            def perSuiteHtml = ''
-            if (fileExists('suite_results.txt')) {
-              def lines = readFile('suite_results.txt').trim().split(/\r?\n/)
-              def rows = lines.collect { line ->
-                def parts = line.split('\\|', 2)
-                def name = parts[0]
-                def status = parts.size() > 1 ? parts[1] : ''
-                def color = (status == 'SUCCESS') ? '#16a34a' : '#dc2626'
-                """
-                <tr>
-                  <td style="padding:6px 10px;border:1px solid #e5e7eb;">${name}</td>
-                  <td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:700;color:${color};">${status}</td>
-                </tr>
-                """
-              }.join('\n')
-
-              perSuiteHtml = """
-              <p><strong>Per-suite results:</strong></p>
-              <table style="border-collapse:collapse;font-family:Segoe UI,Arial,sans-serif;font-size:13px">
-                <tr>
-                  <th style="text-align:left;padding:8px 10px;border:1px solid #e5e7eb;background:#f3f4f6;">Test</th>
-                  <th style="text-align:left;padding:8px 10px;border:1px solid #e5e7eb;background:#f3f4f6;">Result</th>
-                </tr>
-                ${rows}
-              </table>
-              """
-            }
-
             def status = currentBuild.currentResult
             def statusColor = (status == 'SUCCESS') ? '#16a34a' : '#dc2626'
-
             emailext(
               to: recipients,
               subject: "Mobile Sanity Build #${env.BUILD_NUMBER} ${status}",
               mimeType: 'text/html',
-              body: """<html>
-  <body style="font-family:Segoe UI, Arial, sans-serif; font-size:14px; color:#111827;">
-    <p>Hi Team,</p>
-    <p>This is an automated build status update from the Mobile Automation Suite.</p>
-    <p><strong>Status:</strong>
-       <span style="font-weight:700; color:${statusColor};">${status}</span>
-    </p>
-    <p>
-      <strong>Executed On:</strong> ${new Date().format("yyyy-MM-dd HH:mm:ss")}<br/>
-      <strong>Duration:</strong> ${currentBuild.durationString.replace(' and counting', '')}
-    </p>
-    <p><strong>Executed Test Cases:</strong></p>
-  <pre style="background:#f8fafc;border:1px solid #e5e7eb;padding:8px;border-radius:6px;white-space:pre-wrap;margin:0;">
-${params.RUN_ALL ? 'All test cases executed (RUN_ALL selected)' :
-    (params.collect { k, v -> v && k != 'RUN_ALL' && k != 'EMAILS' ? " - ${k}" : null }
-          .findAll { it != null }
-          .join('\n'))}
-  </pre>
-    ${perSuiteHtml}
-    <p style="margin-top:12px;">Attached: <em>allure-report.single.html</em>.</p>
-  </body>
-</html>""",
+              body: """<html><body>
+                <p>Hi Team,</p>
+                <p>Build Status: <b style="color:${statusColor}">${status}</b></p>
+                <p>Executed: ${new Date().format("yyyy-MM-dd HH:mm:ss")}</p>
+                <p>Allure Report Attached.</p>
+              </body></html>""",
               attachmentsPattern: 'allure-report.single.html'
             )
           } else {
-            echo 'EMAILS empty — skipping email.'
+            echo "No email recipients — skipping email."
           }
         }
       }
