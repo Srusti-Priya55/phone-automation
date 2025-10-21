@@ -40,11 +40,9 @@ pipeline {
 
   stages {
 
-    // ==================== SCHEDULER ====================
     stage('Schedule or Run') {
       steps {
         script {
-          // detect if current build was triggered by another build of the same job
           def causes = currentBuild.getBuildCauses()
           def isUpstream = causes.any { it._class?.contains("UpstreamCause") }
 
@@ -53,7 +51,6 @@ pipeline {
             def sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm")
             def buildParams = currentBuild.rawBuild.getAction(hudson.model.ParametersAction).parameters
 
-            // ---------- ONCE ----------
             if (params.SCHEDULE_TYPE == 'Once') {
               if (!params.ONCE_DATE || !params.ONCE_TIME)
                 error "Please provide ONCE_DATE and ONCE_TIME"
@@ -64,15 +61,12 @@ pipeline {
 
               echo "⏱ One-time schedule: running after ${delaySeconds} seconds (${target})"
               build job: env.JOB_NAME, wait: false, parameters: buildParams, quietPeriod: delaySeconds
-              echo "✅ One-time job scheduled successfully."
               currentBuild.result = 'SUCCESS'
               return
             }
 
-            // ---------- EVERYDAY ----------
             else if (params.SCHEDULE_TYPE == 'Everyday') {
               if (!params.EVERY_TIME) error "Please provide EVERY_TIME"
-
               def parts = params.EVERY_TIME.tokenize(':')
               def hh = parts[0].toInteger()
               def mm = parts[1].toInteger()
@@ -84,15 +78,12 @@ pipeline {
               if (cal.time.before(now)) cal.add(Calendar.DATE, 1)
 
               def delaySeconds = ((cal.time.time - now.time) / 1000).intValue()
-              echo "⏰ Daily run scheduled at ${params.EVERY_TIME}, next run after ${delaySeconds} sec (${cal.time})"
-
+              echo "⏰ Daily run scheduled for ${params.EVERY_TIME}, in ${delaySeconds} sec"
               build job: env.JOB_NAME, wait: false, parameters: buildParams, quietPeriod: delaySeconds
-              echo "✅ First daily run scheduled."
               currentBuild.result = 'SUCCESS'
               return
             }
 
-            // ---------- WEEKLY ----------
             else if (params.SCHEDULE_TYPE == 'Weekly') {
               if (!params.WEEK_DAYS || !params.WEEK_TIME)
                 error "Please provide WEEK_DAYS and WEEK_TIME"
@@ -103,7 +94,6 @@ pipeline {
               def daysMap = ['sun':1,'mon':2,'tue':3,'wed':4,'thu':5,'fri':6,'sat':7]
               def nowCal = Calendar.getInstance()
               def soonest = null
-
               def dayList = params.WEEK_DAYS.toLowerCase().split(',').collect { it.trim() }
 
               for (d in dayList) {
@@ -117,12 +107,10 @@ pipeline {
                 if (soonest == null || c.time.before(soonest.time)) soonest = c
               }
 
-              if (soonest == null) error "Invalid WEEK_DAYS input — e.g. MON,TUE"
+              if (soonest == null) error "Invalid WEEK_DAYS input"
               def delaySeconds = ((soonest.time.time - now.time) / 1000).intValue()
-              echo "📅 Weekly run scheduled on ${params.WEEK_DAYS} at ${params.WEEK_TIME} (in ${delaySeconds} sec)"
-
+              echo "📅 Weekly run scheduled on ${params.WEEK_DAYS} ${params.WEEK_TIME} (in ${delaySeconds}s)"
               build job: env.JOB_NAME, wait: false, parameters: buildParams, quietPeriod: delaySeconds
-              echo "✅ First weekly run scheduled."
               currentBuild.result = 'SUCCESS'
               return
             }
@@ -133,27 +121,44 @@ pipeline {
       }
     }
 
-    // ==================== MAIN STAGES ====================
     stage('Checkout') {
       when { expression { params.RUN_MODE == 'Run now' || currentBuild.getBuildCauses().any { it._class?.contains("UpstreamCause") } } }
       steps { checkout scm }
     }
 
-    stage('Agent sanity') {
+    stage('Select Flows') {
       when { expression { params.RUN_MODE == 'Run now' || currentBuild.getBuildCauses().any { it._class?.contains("UpstreamCause") } } }
       steps {
-        bat '''
-          echo ===== Agent sanity =====
-          node -v
-          npm -v
-        '''
+        script {
+          // Convert string 'true'/'false' to real booleans (important for scheduled runs)
+          def normalize = { v -> (v instanceof Boolean) ? v : v?.toString()?.toBoolean() }
+
+          def all = [
+            'install_adb','install_play','aggregation_check','tnd_check',
+            'collection_mode_all','collection_mode_trusted','collection_mode_untrusted',
+            'interface_info','ipfix_disable','ipfix_zero','parent_process_check',
+            'template_caching_untrusted','before_after_reboot',
+            'aup_should_displayed','aup_should_not_displayed','eula_not_accepted','negatives'
+          ]
+
+          def chosen = normalize(params.RUN_ALL) ? all : all.findAll { normalize(params[it]) }
+          if (!chosen) error 'No flows selected — pick at least one or enable RUN_ALL'
+          env.CHOSEN = chosen.join(',')
+          echo "Flows selected: ${env.CHOSEN}"
+        }
       }
     }
 
-    stage('Run flows') {
+    stage('Run Flows') {
       when { expression { params.RUN_MODE == 'Run now' || currentBuild.getBuildCauses().any { it._class?.contains("UpstreamCause") } } }
       steps {
-        bat 'echo === Running selected automation flows ==='
+        script {
+          for (f in env.CHOSEN.split(',')) {
+            echo "Running flow: ${f}"
+            bat "echo Executing suite ${f}"
+            // replace above with your actual: npx wdio run wdio.conf.ts --suite ${f}
+          }
+        }
       }
     }
 
@@ -189,7 +194,7 @@ pipeline {
               attachmentsPattern: 'allure-report.single.html'
             )
           } else {
-            echo 'No email recipients provided — skipping email.'
+            echo 'No email recipients — skipping email.'
           }
         }
       }
