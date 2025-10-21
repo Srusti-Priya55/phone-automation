@@ -167,39 +167,88 @@ pipeline {
     }
 
 
-    stage('Generate Allure') {
-      when { expression { params.RUN_MODE == 'Run now' || currentBuild.getBuildCauses().any { it._class?.contains("UpstreamCause") } } }
+    stage('Publish Allure (Jenkins link)') {
+      steps {
+        script {
+          if (fileExists('allure-results')) {
+            allure(results: [[path: 'allure-results']])
+            echo 'Published Allure results to Jenkins.'
+          } else {
+            echo 'No allure-results to publish.'
+          }
+        }
+      }
+    }
+
+    stage('Make single-file HTML (no server)') {
       steps {
         bat '''
-          echo ==== Generate Allure ====
-          if not exist allure-results (echo No allure-results found & exit /b 1)
-          npx allure generate --clean allure-results -o allure-report
+          echo ==== Build single HTML ====
+          if not exist tools\\pack-allure-onehtml.js (
+            echo Missing tools\\pack-allure-onehtml.js
+            exit /b 1
+          )
+          if not exist allure-report\\index.html (
+            echo Missing allure-report\\index.html
+            exit /b 1
+          )
+          node tools\\pack-allure-onehtml.js allure-report
+          if not exist allure-report\\allure-report.offline.html (
+            echo Single HTML not created
+            dir allure-report
+            exit /b 1
+          )
+          copy /y "allure-report\\allure-report.offline.html" "allure-report.single.html" >nul
+          echo Created: allure-report.single.html
         '''
       }
     }
 
-    stage('Email Report') {
-      when { expression { params.RUN_MODE == 'Run now' || currentBuild.getBuildCauses().any { it._class?.contains("UpstreamCause") } } }
+    stage('Publish & Archive') {
       steps {
         script {
+          archiveArtifacts artifacts: 'allure-results/**, allure-report/**, tools/**, allure-report.single.html', fingerprint: true
+
           def recipients = (params.EMAILS ?: '').trim()
           if (recipients) {
-            def status = currentBuild.currentResult
-            def color = (status == 'SUCCESS') ? '#16a34a' : '#dc2626'
-            emailext(
-              to: recipients,
-              subject: "Mobile Sanity Build #${env.BUILD_NUMBER} ${status}",
-              mimeType: 'text/html',
-              body: """<html><body>
-                <p>Hi Team,</p>
-                <p>Build Status: <b style="color:${color}">${status}</b></p>
-                <p>Executed at: ${new Date().format("yyyy-MM-dd HH:mm:ss")}</p>
-                <p>Allure report attached.</p>
-              </body></html>""",
-              attachmentsPattern: 'allure-report.single.html'
-            )
+          def status      = currentBuild.currentResult
+          def statusColor = (status == 'SUCCESS') ? '#16a34a' : '#dc2626'   // green / red
+
+          emailext(
+            to: recipients,
+            subject: "Mobile Sanity  Build #${env.BUILD_NUMBER}  ${status}",
+            mimeType: 'text/html',   // switch to HTML so we can style
+            body: """<html>
+            <body style="font-family:Segoe UI, Arial, sans-serif; font-size:14px; color:#111827;">
+              <p>Hi Team,</p>
+
+              <p>This is an automated build status update from the Mobile Automation Suite.</p>
+
+              <p><strong>Status:</strong>
+                <span style="font-weight:700; color:${statusColor};">${status}</span>
+              </p>
+
+              <p>
+                <strong>Executed On:</strong> ${new Date().format("yyyy-MM-dd HH:mm:ss")}<br/>
+                <strong>Duration:</strong> ${currentBuild.durationString.replace(' and counting', '')}
+              </p>
+
+              <p><strong>Executed Test Cases:</strong></p>
+              <pre style="background:#f8fafc;border:1px solid #e5e7eb;padding:8px;border-radius:6px;white-space:pre-wrap;margin:0;">
+          ${params.RUN_ALL ? 'All test cases executed (RUN_ALL selected)' :
+              (params.collect { k, v -> v && k != 'RUN_ALL' && k != 'EMAILS' ? " - ${k}" : null }
+                    .findAll { it != null }
+                    .join('\\n'))}
+              </pre>
+
+              <p style="margin-top:12px;">Attached: <em>allure-report.single.html</em>.</p>
+            </body>
+          </html>""",
+            attachmentsPattern: 'allure-report.single.html'
+          )
+
           } else {
-            echo 'No email recipients — skipping email.'
+            echo 'EMAILS empty — skipping email.'
           }
         }
       }
