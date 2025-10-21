@@ -2,14 +2,31 @@ pipeline {
   agent any
 
   parameters {
+    // ---------- Run Mode & Scheduling ----------
     choice(name: 'RUN_MODE', choices: ['Run now', 'Schedule'], description: 'Run immediately or schedule')
     choice(name: 'SCHEDULE_TYPE', choices: ['Once', 'Everyday', 'Weekly'], description: 'If Schedule selected')
-    string(name: 'ONCE_DATE', defaultValue: '', description: 'Once: date (YYYY-MM-DD)')
-    string(name: 'ONCE_TIME', defaultValue: '', description: 'Once: time (HH:mm 24h)')
-    string(name: 'EVERY_TIME', defaultValue: '', description: 'Everyday: time (HH:mm 24h)')
-    string(name: 'WEEK_DAYS', defaultValue: '', description: 'Weekly: Mon,Tue,Wed,Thu,Fri,Sat,Sun')
-    string(name: 'WEEK_TIME', defaultValue: '', description: 'Weekly: time (HH:mm 24h)')
 
+    // Colored hints for user clarity
+    text(name: 'NOTE',
+         defaultValue: '''
+🟢 **Scheduling Guide:**
+
+- 🟩 **Once** → Fill: `ONCE_DATE` and `ONCE_TIME`
+- 🟨 **Everyday** → Fill: `EVERY_TIME`
+- 🟦 **Weekly** → Fill: `WEEK_DAYS` and `WEEK_TIME`
+
+(Fields for other modes can remain blank.)
+         '''.stripIndent(),
+         description: 'Highlight guide for the scheduling fields.')
+
+    // ---------- Schedule Parameters ----------
+    string(name: 'ONCE_DATE', defaultValue: '', description: '🟩 Once: date (YYYY-MM-DD)')
+    string(name: 'ONCE_TIME', defaultValue: '', description: '🟩 Once: time (HH:mm 24h)')
+    string(name: 'EVERY_TIME', defaultValue: '', description: '🟨 Everyday: time (HH:mm 24h)')
+    string(name: 'WEEK_DAYS', defaultValue: '', description: '🟦 Weekly: Mon,Tue,Wed,Thu,Fri,Sat,Sun')
+    string(name: 'WEEK_TIME', defaultValue: '', description: '🟦 Weekly: time (HH:mm 24h)')
+
+    // ---------- Test Case Flags ----------
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all flows')
     booleanParam(name: 'install_adb', defaultValue: false, description: '')
     booleanParam(name: 'install_play', defaultValue: false, description: '')
@@ -43,12 +60,11 @@ pipeline {
     stage('Schedule or Run') {
       steps {
         script {
-          // Detect if this is a scheduler trigger (upstream) or user-triggered run
           def causes = currentBuild.getBuildCauses()
           def isUpstream = causes.any { it._class?.contains("UpstreamCause") }
 
           if (params.RUN_MODE == 'Schedule' && !isUpstream) {
-            env.SCHEDULE_ONLY = 'true'  // mark scheduler build
+            env.SCHEDULE_ONLY = 'true'
             def now = new Date()
             def sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm")
             def buildParams = currentBuild.rawBuild.getAction(hudson.model.ParametersAction).parameters
@@ -56,11 +72,9 @@ pipeline {
             if (params.SCHEDULE_TYPE == 'Once') {
               if (!params.ONCE_DATE || !params.ONCE_TIME)
                 error "Please provide ONCE_DATE and ONCE_TIME"
-
               def target = sdf.parse("${params.ONCE_DATE} ${params.ONCE_TIME}")
               def delaySeconds = ((target.time - now.time) / 1000).intValue()
               if (delaySeconds < 60) delaySeconds = 60
-
               echo "⏱ One-time schedule: running after ${delaySeconds} seconds (${target})"
               build job: env.JOB_NAME, wait: false, parameters: buildParams, quietPeriod: delaySeconds
               echo "✅ Scheduled successfully. This build will now exit."
@@ -73,13 +87,11 @@ pipeline {
               def parts = params.EVERY_TIME.tokenize(':')
               def hh = parts[0].toInteger()
               def mm = parts[1].toInteger()
-
               def cal = Calendar.getInstance()
               cal.set(Calendar.HOUR_OF_DAY, hh)
               cal.set(Calendar.MINUTE, mm)
               cal.set(Calendar.SECOND, 0)
               if (cal.time.before(now)) cal.add(Calendar.DATE, 1)
-
               def delaySeconds = ((cal.time.time - now.time) / 1000).intValue()
               echo "⏰ Daily run scheduled for ${params.EVERY_TIME}, in ${delaySeconds} sec"
               build job: env.JOB_NAME, wait: false, parameters: buildParams, quietPeriod: delaySeconds
@@ -91,7 +103,6 @@ pipeline {
             else if (params.SCHEDULE_TYPE == 'Weekly') {
               if (!params.WEEK_DAYS || !params.WEEK_TIME)
                 error "Please provide WEEK_DAYS and WEEK_TIME"
-
               def parts = params.WEEK_TIME.tokenize(':')
               def hh = parts[0].toInteger()
               def mm = parts[1].toInteger()
