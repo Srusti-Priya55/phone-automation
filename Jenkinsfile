@@ -43,10 +43,12 @@ pipeline {
     stage('Schedule or Run') {
       steps {
         script {
+          // Detect if this is a scheduler trigger (upstream) or user-triggered run
           def causes = currentBuild.getBuildCauses()
           def isUpstream = causes.any { it._class?.contains("UpstreamCause") }
 
           if (params.RUN_MODE == 'Schedule' && !isUpstream) {
+            env.SCHEDULE_ONLY = 'true'  // mark scheduler build
             def now = new Date()
             def sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm")
             def buildParams = currentBuild.rawBuild.getAction(hudson.model.ParametersAction).parameters
@@ -61,6 +63,7 @@ pipeline {
 
               echo "⏱ One-time schedule: running after ${delaySeconds} seconds (${target})"
               build job: env.JOB_NAME, wait: false, parameters: buildParams, quietPeriod: delaySeconds
+              echo "✅ Scheduled successfully. This build will now exit."
               currentBuild.result = 'SUCCESS'
               return
             }
@@ -80,6 +83,7 @@ pipeline {
               def delaySeconds = ((cal.time.time - now.time) / 1000).intValue()
               echo "⏰ Daily run scheduled for ${params.EVERY_TIME}, in ${delaySeconds} sec"
               build job: env.JOB_NAME, wait: false, parameters: buildParams, quietPeriod: delaySeconds
+              echo "✅ Scheduled successfully. This build will now exit."
               currentBuild.result = 'SUCCESS'
               return
             }
@@ -111,10 +115,12 @@ pipeline {
               def delaySeconds = ((soonest.time.time - now.time) / 1000).intValue()
               echo "📅 Weekly run scheduled on ${params.WEEK_DAYS} ${params.WEEK_TIME} (in ${delaySeconds}s)"
               build job: env.JOB_NAME, wait: false, parameters: buildParams, quietPeriod: delaySeconds
+              echo "✅ Scheduled successfully. This build will now exit."
               currentBuild.result = 'SUCCESS'
               return
             }
           } else {
+            env.SCHEDULE_ONLY = 'false'
             echo "▶️ Proceeding with actual test execution (Run now or scheduled run)."
           }
         }
@@ -122,17 +128,15 @@ pipeline {
     }
 
     stage('Checkout') {
-      when { expression { params.RUN_MODE == 'Run now' || currentBuild.getBuildCauses().any { it._class?.contains("UpstreamCause") } } }
+      when { expression { env.SCHEDULE_ONLY == 'false' } }
       steps { checkout scm }
     }
 
     stage('Select Flows') {
-      when { expression { params.RUN_MODE == 'Run now' || currentBuild.getBuildCauses().any { it._class?.contains("UpstreamCause") } } }
+      when { expression { env.SCHEDULE_ONLY == 'false' } }
       steps {
         script {
-          // Convert string 'true'/'false' to real booleans (important for scheduled runs)
           def normalize = { v -> (v instanceof Boolean) ? v : v?.toString()?.toBoolean() }
-
           def all = [
             'install_adb','install_play','aggregation_check','tnd_check',
             'collection_mode_all','collection_mode_trusted','collection_mode_untrusted',
@@ -140,7 +144,6 @@ pipeline {
             'template_caching_untrusted','before_after_reboot',
             'aup_should_displayed','aup_should_not_displayed','eula_not_accepted','negatives'
           ]
-
           def chosen = normalize(params.RUN_ALL) ? all : all.findAll { normalize(params[it]) }
           if (!chosen) error 'No flows selected — pick at least one or enable RUN_ALL'
           env.CHOSEN = chosen.join(',')
@@ -150,7 +153,7 @@ pipeline {
     }
 
     stage('Run Flows') {
-      when { expression { params.RUN_MODE == 'Run now' || currentBuild.getBuildCauses().any { it._class?.contains("UpstreamCause") } } }
+      when { expression { env.SCHEDULE_ONLY == 'false' } }
       steps {
         script {
           for (f in env.CHOSEN.split(',')) {
@@ -166,8 +169,8 @@ pipeline {
       }
     }
 
-
     stage('Publish Allure (Jenkins link)') {
+      when { expression { env.SCHEDULE_ONLY == 'false' } }
       steps {
         script {
           if (fileExists('allure-results')) {
@@ -181,6 +184,7 @@ pipeline {
     }
 
     stage('Make single-file HTML (no server)') {
+      when { expression { env.SCHEDULE_ONLY == 'false' } }
       steps {
         bat '''
           echo ==== Build single HTML ====
@@ -205,47 +209,43 @@ pipeline {
     }
 
     stage('Publish & Archive') {
+      when { expression { env.SCHEDULE_ONLY == 'false' } }
       steps {
         script {
           archiveArtifacts artifacts: 'allure-results/**, allure-report/**, tools/**, allure-report.single.html', fingerprint: true
 
           def recipients = (params.EMAILS ?: '').trim()
           if (recipients) {
-          def status      = currentBuild.currentResult
-          def statusColor = (status == 'SUCCESS') ? '#16a34a' : '#dc2626'   // green / red
+            def status      = currentBuild.currentResult
+            def statusColor = (status == 'SUCCESS') ? '#16a34a' : '#dc2626'
 
-          emailext(
-            to: recipients,
-            subject: "Mobile Sanity  Build #${env.BUILD_NUMBER}  ${status}",
-            mimeType: 'text/html',   // switch to HTML so we can style
-            body: """<html>
-            <body style="font-family:Segoe UI, Arial, sans-serif; font-size:14px; color:#111827;">
-              <p>Hi Team,</p>
-
-              <p>This is an automated build status update from the Mobile Automation Suite.</p>
-
-              <p><strong>Status:</strong>
-                <span style="font-weight:700; color:${statusColor};">${status}</span>
-              </p>
-
-              <p>
-                <strong>Executed On:</strong> ${new Date().format("yyyy-MM-dd HH:mm:ss")}<br/>
-                <strong>Duration:</strong> ${currentBuild.durationString.replace(' and counting', '')}
-              </p>
-
-              <p><strong>Executed Test Cases:</strong></p>
-              <pre style="background:#f8fafc;border:1px solid #e5e7eb;padding:8px;border-radius:6px;white-space:pre-wrap;margin:0;">
-          ${params.RUN_ALL ? 'All test cases executed (RUN_ALL selected)' :
-              (params.collect { k, v -> v && k != 'RUN_ALL' && k != 'EMAILS' ? " - ${k}" : null }
-                    .findAll { it != null }
-                    .join('\\n'))}
-              </pre>
-
-              <p style="margin-top:12px;">Attached: <em>allure-report.single.html</em>.</p>
-            </body>
-          </html>""",
-            attachmentsPattern: 'allure-report.single.html'
-          )
+            emailext(
+              to: recipients,
+              subject: "Mobile Sanity Build #${env.BUILD_NUMBER} ${status}",
+              mimeType: 'text/html',
+              body: """<html>
+              <body style="font-family:Segoe UI, Arial, sans-serif; font-size:14px; color:#111827;">
+                <p>Hi Team,</p>
+                <p>This is an automated build status update from the Mobile Automation Suite.</p>
+                <p><strong>Status:</strong>
+                  <span style="font-weight:700; color:${statusColor};">${status}</span>
+                </p>
+                <p>
+                  <strong>Executed On:</strong> ${new Date().format("yyyy-MM-dd HH:mm:ss")}<br/>
+                  <strong>Duration:</strong> ${currentBuild.durationString.replace(' and counting', '')}
+                </p>
+                <p><strong>Executed Test Cases:</strong></p>
+                <pre style="background:#f8fafc;border:1px solid #e5e7eb;padding:8px;border-radius:6px;white-space:pre-wrap;margin:0;">
+                ${params.RUN_ALL ? 'All test cases executed (RUN_ALL selected)' :
+                    (params.collect { k, v -> v && k != 'RUN_ALL' && k != 'EMAILS' ? " - ${k}" : null }
+                          .findAll { it != null }
+                          .join('\\n'))}
+                </pre>
+                <p style="margin-top:12px;">Attached: <em>allure-report.single.html</em>.</p>
+              </body>
+            </html>""",
+              attachmentsPattern: 'allure-report.single.html'
+            )
 
           } else {
             echo 'EMAILS empty — skipping email.'
