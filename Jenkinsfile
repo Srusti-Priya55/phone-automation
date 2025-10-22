@@ -1,6 +1,50 @@
 pipeline {
   agent any
 
+  // ⚙️ Dynamic validation message
+activeChoiceReactiveParam('VALIDATION_MESSAGE') {
+    description('⚠ Live validation for required schedule fields')
+    choiceType('SINGLE_SELECT')
+    groovyScript {
+        script("""
+            def msg = ''
+            def mode = RUN_MODE ?: ''
+            def schedule = SCHEDULE_TYPE ?: ''
+            def onceDate = ONCE_DATE ?: ''
+            def onceTime = ONCE_TIME ?: ''
+            def everyTime = EVERY_TIME ?: ''
+            def weekDays = WEEK_DAYS ?: ''
+            def weekTime = WEEK_TIME ?: ''
+
+            if (mode == 'Schedule' && schedule == 'Once') {
+                if (!onceDate || !onceTime)
+                    msg = '⛔ Please fill both ONCE_DATE and ONCE_TIME for Once schedule.'
+                else
+                    msg = '✅ All required Once fields filled.'
+            }
+            else if (mode == 'Schedule' && schedule == 'Everyday') {
+                if (!everyTime)
+                    msg = '⛔ Please fill EVERY_TIME for Everyday schedule.'
+                else
+                    msg = '✅ Everyday field filled.'
+            }
+            else if (mode == 'Schedule' && schedule == 'Weekly') {
+                if (!weekDays || !weekTime)
+                    msg = '⛔ Please fill WEEK_DAYS and WEEK_TIME for Weekly schedule.'
+                else
+                    msg = '✅ Weekly fields filled.'
+            }
+            else {
+                msg = 'ℹ️ Select RUN_MODE = Schedule to enable validation.'
+            }
+            return [msg]
+        """)
+        fallbackScript('return ["Validation unavailable"]')
+    }
+    referencedParameters('RUN_MODE,SCHEDULE_TYPE,ONCE_DATE,ONCE_TIME,EVERY_TIME,WEEK_DAYS,WEEK_TIME')
+}
+
+
   parameters {
     choice(name: 'RUN_MODE', choices: ['Run now', 'Schedule'], description: 'Run immediately or schedule')
     choice(name: 'SCHEDULE_TYPE', choices: ['Once', 'Everyday', 'Weekly'], description: 'If Schedule selected')
