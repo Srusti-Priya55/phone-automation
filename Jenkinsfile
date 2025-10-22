@@ -2,15 +2,6 @@ pipeline {
   agent any
 
   parameters {
-    choice(name: 'RUN_MODE', choices: ['Run now', 'Schedule'], description: 'Run immediately or schedule')
-    choice(name: 'SCHEDULE_TYPE', choices: ['Once', 'Everyday', 'Weekly'], description: 'If Schedule selected')
-
-    // 💡 Added clear instructions for each scheduling field
-    string(name: 'ONCE_DATE', defaultValue: '', description: 'Once: date (YYYY-MM-DD). Fill this only when SCHEDULE_TYPE = Once')
-    string(name: 'ONCE_TIME', defaultValue: '', description: 'Once: time (HH:mm 24h). Fill this only when SCHEDULE_TYPE = Once')
-    string(name: 'EVERY_TIME', defaultValue: '', description: 'Everyday: time (HH:mm 24h). Fill this only when SCHEDULE_TYPE = Everyday')
-    string(name: 'WEEK_DAYS', defaultValue: '', description: 'Weekly: Mon,Tue,Wed,Thu,Fri,Sat,Sun. Fill this only when SCHEDULE_TYPE = Weekly')
-    string(name: 'WEEK_TIME', defaultValue: '', description: 'Weekly: time (HH:mm 24h). Fill this only when SCHEDULE_TYPE = Weekly')
 
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all flows')
     booleanParam(name: 'install_adb', defaultValue: false, description: '')
@@ -30,6 +21,15 @@ pipeline {
     booleanParam(name: 'aup_should_not_displayed', defaultValue: false, description: '')
     booleanParam(name: 'eula_not_accepted', defaultValue: false, description: '')
     booleanParam(name: 'negatives', defaultValue: false, description: '')
+    choice(name: 'RUN_MODE', choices: ['Run now', 'Schedule'], description: 'Run immediately or schedule')
+    choice(name: 'SCHEDULE_TYPE', choices: ['Once', 'Everyday', 'Weekly'], description: 'If Schedule selected')
+
+    // 💡 Added clear instructions for each scheduling field
+    string(name: 'ONCE_DATE', defaultValue: '', description: 'Once: date (YYYY-MM-DD). Fill this only when SCHEDULE_TYPE = Once')
+    string(name: 'ONCE_TIME', defaultValue: '', description: 'Once: time (HH:mm 24h). Fill this only when SCHEDULE_TYPE = Once')
+    string(name: 'EVERY_TIME', defaultValue: '', description: 'Everyday: time (HH:mm 24h). Fill this only when SCHEDULE_TYPE = Everyday')
+    string(name: 'WEEK_DAYS', defaultValue: '', description: 'Weekly: Mon,Tue,Wed,Thu,Fri,Sat,Sun. Fill this only when SCHEDULE_TYPE = Weekly')
+    string(name: 'WEEK_TIME', defaultValue: '', description: 'Weekly: time (HH:mm 24h). Fill this only when SCHEDULE_TYPE = Weekly')
     string(name: 'EMAILS', defaultValue: '', description: 'Recipients (comma-separated)')
   }
 
