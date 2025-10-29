@@ -2,7 +2,11 @@ pipeline {
   agent any
 
   parameters {
-
+        choice(
+        name: 'DEVICE_SELECTION',
+        choices: ['Loading...'],
+        description: 'Select connected Android devices to run on'
+    )
     booleanParam(name: 'RUN_ALL', defaultValue: false, description: 'Run all flows')
     booleanParam(name: 'install_adb', defaultValue: false, description: '')
     booleanParam(name: 'install_play', defaultValue: false, description: '')
