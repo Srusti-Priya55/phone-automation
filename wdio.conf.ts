@@ -1,5 +1,8 @@
 // wdio.conf.ts
-import { androidRealCaps } from './config/android.real.cap'
+// import { androidRealCaps } from './config/android.real.cap'
+
+import { androidRealCaps1, androidRealCaps2 } from './config/android.real.cap'
+
 import allure from '@wdio/allure-reporter'
 import { attachScreenshot } from './test/utils/report'
 import { dumpNvmLogs } from './test/utils/logcat'
@@ -183,8 +186,34 @@ export const config: WebdriverIO.Config = {
     ],
   },
 
-  maxInstances: 1,
-  capabilities: [androidRealCaps as any],
+  // maxInstances: 1,
+  // capabilities: [androidRealCaps as any],
+  maxInstances: 2,
+  // Example snippet inside wdio.conf.ts
+capabilities: [
+  {
+    platformName: 'Android',
+    'appium:automationName': 'UiAutomator2',
+    'appium:deviceName': 'device1',
+    'appium:udid': 'RZCW20H58SZ',
+    'appium:noReset': true,
+    'appium:newCommandTimeout': 300,
+
+  } as any,
+  {
+    platformName: 'Android',
+    'appium:automationName': 'UiAutomator2',
+    'appium:deviceName': 'device2',
+    'appium:udid': 'RFCNC1119KV',
+    'appium:noReset': true,
+    'appium:newCommandTimeout': 300,
+    'appium:disableHiddenApiPolicy': true,      
+    'appium:ignoreHiddenApiPolicyError': true,  
+  } as any,
+],
+
+
+
 
   logLevel: 'info',
   waitforTimeout: 10000,

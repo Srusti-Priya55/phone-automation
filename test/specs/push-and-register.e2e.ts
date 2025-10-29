@@ -18,9 +18,23 @@ async function runCmd(cmd: string) {
   return exec(full, { maxBuffer: 10 * 1024 * 1024 })
 }
 
+// async function adbPush(localAbs: string, remoteAbs: string) {
+//   await runCmd(`adb push "${localAbs}" "${remoteAbs}"`)
+// }
 async function adbPush(localAbs: string, remoteAbs: string) {
-  await runCmd(`adb push "${localAbs}" "${remoteAbs}"`)
+  const caps: any = driver.capabilities                
+  const deviceId =
+    caps.udid ||
+    caps['appium:udid'] ||
+    caps.deviceUDID ||
+    caps['appium:deviceUDID']
+
+  if (!deviceId)
+    throw new Error('Could not determine device UDID from session')
+
+  await runCmd(`adb -s ${deviceId} push "${localAbs}" "${remoteAbs}"`)
 }
+
 
 async function takeAndAttachScreenshot(name: string) {
   const b64 = await driver.takeScreenshot()
@@ -219,3 +233,6 @@ export async function runPushAndRegister() {
     }
   })
 }
+
+
+

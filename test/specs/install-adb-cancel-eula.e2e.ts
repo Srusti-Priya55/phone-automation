@@ -6,7 +6,7 @@ import { step, feature, story, severity } from '../utils/report'
 
 
 const PKG = 'com.cisco.anyconnect.vpn.android.avf'
-const APK = path.resolve(__dirname, '../../apps/anyconnect-android-5.1.9.115-release.apk')
+const APK = path.resolve(__dirname, '../../apps/anyconnect-android-5.1.11.416-release.apk')
 const FLOW = process.env.CURRENT_FLOW || 'Adhoc';
 
 /** Reusable flow (can be imported by a sanity suite) */
