@@ -1,14 +1,5 @@
 pipeline {
   agent any
-      // Auto-detect connected devices (from Groovy script)
-  dynamicChoiceParameter(name: 'CONNECTED_DEVICES',
-                          description: 'Select Android devices to run tests on',
-                          script: [
-                              script: readFileFromWorkspace('tools/list_devices.groovy'),
-                              classpath: []
-                          ],
-                          multiSelectDelimiter: ',')
-
 
   parameters {
 
