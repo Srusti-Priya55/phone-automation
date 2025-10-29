@@ -41,6 +41,33 @@ pipeline {
   options { timestamps() }
 
   stages {
+        stage('Detect Connected Devices') {
+      steps {
+        script {
+          echo "🔍 Detecting connected Android devices..."
+          def output = bat(script: 'adb devices', returnStdout: true).trim()
+          def lines = output.readLines()
+          def devices = []
+
+          for (line in lines) {
+            if (line.contains("device") && !line.contains("List")) {
+              def serial = line.tokenize()[0]
+              devices << serial
+            }
+          }
+
+          if (devices.isEmpty()) {
+            error "⛔ No Android devices detected! Please connect at least one device and try again."
+          }
+
+          echo "✅ Connected devices: ${devices.join(', ')}"
+
+          // Store for later use
+          env.CONNECTED_DEVICES = devices.join(',')
+        }
+      }
+    }
+
 
     stage('Schedule or Run') {
       steps {
